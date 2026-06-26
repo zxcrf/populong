@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="64dp"
+        android:text="@string/app_name"
+        android:textColor="@color/text_primary"
+        android:textSize="48sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btn_endless"
+        android:layout_width="240dp"
+        android:layout_height="56dp"
+        android:layout_marginBottom="16dp"
+        android:background="@color/button_primary"
+        android:text="@string/endless_mode"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/btn_levels"
+        android:layout_width="240dp"
+        android:layout_height="56dp"
+        android:layout_marginBottom="16dp"
+        android:background="@color/button_primary"
+        android:text="@string/level_mode"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/btn_sound"
+        android:layout_width="240dp"
+        android:layout_height="56dp"
+        android:background="@color/button_secondary"
+        android:text="@string/sound_on"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp" />
+</LinearLayout>
