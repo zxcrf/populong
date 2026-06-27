@@ -59,6 +59,17 @@ class EndlessModeTest {
     }
 
     @Test
+    fun `combo multiplier scales score`() {
+        // (3*10 + 2*20) * 3 = 210
+        assertEquals(210, mode.calculateScore(3, 2, 3))
+    }
+
+    @Test
+    fun `combo multiplier below one is treated as one`() {
+        assertEquals(70, mode.calculateScore(3, 2, 0))
+    }
+
+    @Test
     fun `should spawn rainbow after 3 misses`() {
         assertTrue(mode.shouldSpawnRainbow(3))
         assertTrue(mode.shouldSpawnRainbow(5))

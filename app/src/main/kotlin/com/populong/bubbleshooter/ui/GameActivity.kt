@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Window
 import android.view.WindowManager
+import com.populong.bubbleshooter.audio.HapticManager
 import com.populong.bubbleshooter.audio.SoundManager
 import com.populong.bubbleshooter.engine.GameSurfaceView
 import com.populong.bubbleshooter.mode.LevelData
@@ -12,6 +13,7 @@ import com.populong.bubbleshooter.mode.LevelData
 class GameActivity : Activity() {
     private lateinit var gameSurfaceView: GameSurfaceView
     private lateinit var soundManager: SoundManager
+    private lateinit var hapticManager: HapticManager
     private lateinit var scores: ScoreRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,11 +32,15 @@ class GameActivity : Activity() {
         soundManager.enabled = scores.isSoundEnabled()
         soundManager.init()
 
+        hapticManager = HapticManager(this)
+        hapticManager.enabled = scores.isVibrationEnabled()
+
         gameSurfaceView = GameSurfaceView(this)
         gameSurfaceView.configure(
             mode = modeType,
             level = levelNumber,
             sound = soundManager,
+            haptics = hapticManager,
             highScore = scores.getHighScore(),
             onEnd = { finalScore ->
                 scores.setHighScore(finalScore)

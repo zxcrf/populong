@@ -22,6 +22,9 @@ object GameConfig {
 
     const val RAINBOW_MISS_THRESHOLD = 3
 
+    // Consecutive successful clears multiply the score, capped to keep totals sane.
+    const val MAX_COMBO_MULTIPLIER = 9
+
     const val GRID_TOP_MARGIN_RATIO = 0.08f
     const val SHOOTER_BOTTOM_MARGIN_RATIO = 0.12f
     const val BUBBLE_RADIUS_RATIO = 0.048f

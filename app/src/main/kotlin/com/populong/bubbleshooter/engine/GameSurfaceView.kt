@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import com.populong.bubbleshooter.audio.HapticManager
 import com.populong.bubbleshooter.audio.SoundManager
 import com.populong.bubbleshooter.mode.EndlessMode
 import com.populong.bubbleshooter.mode.GameMode
@@ -21,6 +22,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     private var modeType: String = "endless"
     private var levelNumber: Int = 1
     private var soundManager: SoundManager? = null
+    private var hapticManager: HapticManager? = null
     private var onGameEnd: (Int) -> Unit = {}
     private var onLevelComplete: (Int, Int) -> Unit = { _, _ -> }
     private var onQuit: () -> Unit = {}
@@ -30,6 +32,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         mode: String,
         level: Int,
         sound: SoundManager,
+        haptics: HapticManager,
         highScore: Int,
         onEnd: (Int) -> Unit,
         onComplete: (Int, Int) -> Unit,
@@ -38,6 +41,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         this.modeType = mode
         this.levelNumber = level
         this.soundManager = sound
+        this.hapticManager = haptics
         this.savedHighScore = highScore
         this.onGameEnd = onEnd
         this.onLevelComplete = onComplete
@@ -76,6 +80,8 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             onLevelComplete = onLevelComplete,
             onQuit = onQuit
         )
+        ctrl.uiRenderer = renderer.uiRenderer
+        ctrl.haptics = hapticManager
         controller = ctrl
 
         val loop = GameLoop(holder, ctrl, renderer)

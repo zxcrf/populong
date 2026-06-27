@@ -46,10 +46,21 @@ class MainActivity : Activity() {
             scores.setSoundEnabled(!scores.isSoundEnabled())
             updateSoundButton(soundBtn)
         }
+
+        val vibrationBtn = findViewById<Button>(R.id.btn_vibration)
+        updateVibrationButton(vibrationBtn)
+        vibrationBtn.setOnClickListener {
+            scores.setVibrationEnabled(!scores.isVibrationEnabled())
+            updateVibrationButton(vibrationBtn)
+        }
     }
 
     private fun updateSoundButton(btn: Button) {
         btn.setText(if (scores.isSoundEnabled()) R.string.sound_on else R.string.sound_off)
+    }
+
+    private fun updateVibrationButton(btn: Button) {
+        btn.setText(if (scores.isVibrationEnabled()) R.string.vibration_on else R.string.vibration_off)
     }
 
     private fun showLevelSelect() {

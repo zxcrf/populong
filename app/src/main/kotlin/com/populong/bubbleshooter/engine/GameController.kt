@@ -2,6 +2,7 @@ package com.populong.bubbleshooter.engine
 
 import android.graphics.Canvas
 import android.graphics.PointF
+import com.populong.bubbleshooter.audio.HapticManager
 import com.populong.bubbleshooter.audio.SoundManager
 import com.populong.bubbleshooter.effects.EffectsController
 import com.populong.bubbleshooter.game.*
@@ -36,6 +37,15 @@ class GameController(
 
     val inputQueue = ConcurrentLinkedQueue<TouchEvent>()
 
+    // The UIRenderer used to draw overlays. Wired by the host so that touch
+    // hit-testing uses the exact button rectangles produced during draw().
+    // Both draw() and processInput() run on the same GameLoop thread, so the
+    // rects are always populated by the time a tap is read.
+    var uiRenderer: UIRenderer? = null
+
+    // Optional haptic feedback, wired by the host (null in unit tests).
+    var haptics: HapticManager? = null
+
     val bubbleRadius = screenWidth * GameConfig.BUBBLE_RADIUS_RATIO
     val gridOffsetY = screenHeight * GameConfig.GRID_TOP_MARGIN_RATIO
     val shooterX = screenWidth / 2f
@@ -47,6 +57,7 @@ class GameController(
         private set
     private var shotCount = 0
     private var consecutiveMisses = 0
+    private var comboCount = 0
 
     var currentColor = BubbleColor.RED
         private set
@@ -119,40 +130,35 @@ class GameController(
     }
 
     private fun isPauseButton(x: Float, y: Float): Boolean {
-        return x > screenWidth - 100f && y < 80f
+        return uiRenderer?.pauseButtonRect?.contains(x, y) == true
     }
 
     private fun handlePausedTouch(event: TouchEvent) {
         if (event !is TouchEvent.Up) return
-        val uiRenderer = UIRenderer()
-        if (uiRenderer.resumeButtonRect.contains(event.x, event.y) ||
-            event.y < screenHeight / 2f - 100f) {
-            resume()
-        }
-        if (event.y > screenHeight / 2f + 80f) {
-            onQuit()
+        val ui = uiRenderer ?: return
+        when {
+            ui.resumeButtonRect.contains(event.x, event.y) -> resume()
+            ui.quitButtonRect.contains(event.x, event.y) -> onQuit()
         }
     }
 
     private fun handleGameOverTouch(event: TouchEvent) {
         if (event !is TouchEvent.Up) return
-        val cy = screenHeight / 2f
-        if (event.y in cy..(cy + 100f)) {
-            restart()
-        } else if (event.y > cy + 100f) {
-            onQuit()
+        val ui = uiRenderer ?: return
+        when {
+            ui.retryButtonRect.contains(event.x, event.y) -> restart()
+            ui.menuButtonRect.contains(event.x, event.y) -> onQuit()
         }
     }
 
     private fun handleLevelCompleteTouch(event: TouchEvent) {
         if (event !is TouchEvent.Up) return
-        val cy = screenHeight / 2f
-        if (event.y in (cy + 20f)..(cy + 100f)) {
-            if (mode is LevelMode) {
-                onLevelComplete(mode.levelNumber(), score)
+        val ui = uiRenderer ?: return
+        when {
+            ui.nextLevelButtonRect.contains(event.x, event.y) -> {
+                if (mode is LevelMode) onLevelComplete(mode.levelNumber(), score)
             }
-        } else if (event.y > cy + 100f) {
-            onQuit()
+            ui.menuButtonRect.contains(event.x, event.y) -> onQuit()
         }
     }
 
@@ -181,6 +187,7 @@ class GameController(
         )
         state = GameState.Shooting(activeProjectile!!)
         soundManager.play(SoundManager.Sfx.SHOOT)
+        haptics?.vibrate(HapticManager.Cue.SHOOT)
         aimSegments = emptyList()
     }
 
@@ -214,13 +221,17 @@ class GameController(
             val matched = matchFinder.findMatches(snapCell, grid)
             if (matched.isNotEmpty()) {
                 consecutiveMisses = 0
+                comboCount++
                 pendingMatched = matched
                 for (cell in matched) {
                     val pos = grid.cellToPixel(cell, bubbleRadius, gridOffsetY)
                     val bubble = grid.get(cell)
-                    if (bubble != null) effects.emitBubblePop(pos.x, pos.y, bubble.color)
+                    if (bubble != null) {
+                        effects.emitBubblePop(pos.x, pos.y, bubble.color, matched.size)
+                    }
                 }
                 soundManager.play(SoundManager.Sfx.POP)
+                haptics?.vibrate(HapticManager.Cue.POP, matched.size)
 
                 grid.removeAll(matched)
                 pendingFloating = floatingDetector.findFloating(grid)
@@ -230,17 +241,28 @@ class GameController(
                     effects.triggerShake(pendingFloating.size)
                     grid.removeAll(pendingFloating)
                     soundManager.play(SoundManager.Sfx.FALL)
+                    haptics?.vibrate(HapticManager.Cue.FALL, pendingFloating.size)
                 }
 
-                val pts = mode.calculateScore(matched.size, pendingFloating.size, 1)
+                val multiplier = comboCount.coerceAtMost(GameConfig.MAX_COMBO_MULTIPLIER)
+                val pts = mode.calculateScore(matched.size, pendingFloating.size, multiplier)
                 score += pts
                 val popCenter = grid.cellToPixel(snapCell, bubbleRadius, gridOffsetY)
                 effects.addScorePopup(popCenter.x, popCenter.y, pts)
-                if (matched.size + pendingFloating.size >= 6) {
-                    soundManager.play(SoundManager.Sfx.COMBO)
+
+                val isBigClear = matched.size + pendingFloating.size >= 6
+                if (comboCount >= 2) {
+                    effects.addComboPopup(
+                        shooterX, popCenter.y - bubbleRadius * 3f, comboCount
+                    )
+                }
+                if (comboCount >= 2 || isBigClear) {
+                    val pitch = (1f + (comboCount - 1) * 0.08f).coerceIn(1f, 1.6f)
+                    soundManager.play(SoundManager.Sfx.COMBO, pitch)
                 }
             } else {
                 consecutiveMisses++
+                comboCount = 0
             }
 
             resolvePhase = 0
@@ -258,6 +280,7 @@ class GameController(
             if (mode.isLevelComplete(grid)) {
                 if (score > highScore) highScore = score
                 onGameEnd(score)
+                haptics?.vibrate(HapticManager.Cue.WIN)
                 state = GameState.LevelComplete
                 return
             }
@@ -333,6 +356,7 @@ class GameController(
         score = 0
         shotCount = 0
         consecutiveMisses = 0
+        comboCount = 0
         activeProjectile = null
         aimSegments = emptyList()
         mode.initializeGrid(grid, rng)

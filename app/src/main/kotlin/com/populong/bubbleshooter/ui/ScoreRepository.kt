@@ -30,4 +30,9 @@ class ScoreRepository(context: Context) {
     fun setSoundEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("sound_enabled", enabled).apply()
     }
+
+    fun isVibrationEnabled(): Boolean = prefs.getBoolean("vibration_enabled", true)
+    fun setVibrationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("vibration_enabled", enabled).apply()
+    }
 }

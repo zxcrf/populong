@@ -21,9 +21,16 @@ class GameRenderer {
             canvas, controller.grid, controller.bubbleRadius, controller.gridOffsetY
         )
 
+        val dangerRow = controller.grid.maxRows - 2
         val dangerY = controller.gridOffsetY +
-                (controller.grid.maxRows - 2) * controller.bubbleRadius * 1.732f
-        uiRenderer.drawDangerLine(canvas, dangerY, canvas.width.toFloat())
+                dangerRow * controller.bubbleRadius * 1.732f
+        // Proximity ramps up over the last 4 rows before game over.
+        val rowsAway = (dangerRow - controller.grid.lowestOccupiedRow()).coerceAtLeast(0)
+        val dangerIntensity = (1f - rowsAway / 4f).coerceIn(0f, 1f)
+        uiRenderer.drawDangerLine(
+            canvas, dangerY, canvas.width.toFloat(),
+            dangerIntensity, controller.effects.clockMs
+        )
 
         controller.activeProjectile?.let {
             bubbleRenderer.drawProjectileWithRadius(canvas, it, controller.bubbleRadius)

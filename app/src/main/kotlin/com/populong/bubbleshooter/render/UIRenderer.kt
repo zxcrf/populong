@@ -58,14 +58,17 @@ class UIRenderer {
         textPaint.color = Color.WHITE
 
         val pw = canvas.width.toFloat()
-        pauseButtonRect.set(pw - 90f, 10f, pw - 10f, 70f)
+        // Touch-friendly pause button (~110x76). The drawn rect IS the hit area
+        // (GameController hit-tests pauseButtonRect directly), so keep it generous.
+        pauseButtonRect.set(pw - 118f, 14f, pw - 14f, 90f)
         pauseBtnPaint.style = Paint.Style.FILL
         pauseBtnPaint.color = 0x44FFFFFF.toInt()
-        canvas.drawRoundRect(pauseButtonRect, 12f, 12f, pauseBtnPaint)
+        canvas.drawRoundRect(pauseButtonRect, 14f, 14f, pauseBtnPaint)
         pauseBtnPaint.color = 0xCCFFFFFF.toInt()
-        pauseBtnPaint.style = Paint.Style.FILL
-        canvas.drawRect(pw - 62f, 26f, pw - 54f, 54f, pauseBtnPaint)
-        canvas.drawRect(pw - 46f, 26f, pw - 38f, 54f, pauseBtnPaint)
+        val cx = pauseButtonRect.centerX()
+        val cy = pauseButtonRect.centerY()
+        canvas.drawRect(cx - 14f, cy - 18f, cx - 4f, cy + 18f, pauseBtnPaint)
+        canvas.drawRect(cx + 4f, cy - 18f, cx + 14f, cy + 18f, pauseBtnPaint)
     }
 
     fun drawPauseOverlay(canvas: Canvas) {
@@ -152,17 +155,33 @@ class UIRenderer {
         buttonPaint.color = 0xFF4488FF.toInt()
     }
 
-    fun drawDangerLine(canvas: Canvas, y: Float, width: Float) {
-        val paint = Paint().apply {
-            color = 0x44FF4444.toInt()
-            strokeWidth = 2f
-            style = Paint.Style.STROKE
-        }
+    private val dangerPaint = Paint().apply {
+        style = Paint.Style.STROKE
+    }
+
+    /**
+     * [intensity] (0..1) is how close the stack is to the line; [clockMs] drives
+     * a pulse so the warning visibly throbs as the player approaches danger.
+     */
+    fun drawDangerLine(
+        canvas: Canvas,
+        y: Float,
+        width: Float,
+        intensity: Float = 0f,
+        clockMs: Float = 0f
+    ) {
+        val clamped = intensity.coerceIn(0f, 1f)
+        val pulse = 0.5f + 0.5f * kotlin.math.sin(clockMs / 280f)
+        // Base visibility plus a pulsing boost that grows with proximity.
+        val alpha = (0x40 + (clamped * pulse * 0xBF)).toInt().coerceIn(0x40, 0xFF)
+        dangerPaint.color = (alpha shl 24) or 0xFF4444
+        dangerPaint.strokeWidth = 2f + clamped * 5f
+
         val dashLen = 12f
         val gap = 8f
         var x = 0f
         while (x < width) {
-            canvas.drawLine(x, y, (x + dashLen).coerceAtMost(width), y, paint)
+            canvas.drawLine(x, y, (x + dashLen).coerceAtMost(width), y, dangerPaint)
             x += dashLen + gap
         }
     }

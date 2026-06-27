@@ -25,6 +25,7 @@ class EffectsRenderer {
         }
 
         for (popup in effects.scorePopups) {
+            textPaint.textSize = popup.size
             textPaint.color = popup.color
             textPaint.alpha = popup.alpha
             canvas.drawText(popup.text, popup.x, popup.y + popup.offsetY, textPaint)

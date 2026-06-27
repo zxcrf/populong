@@ -56,4 +56,10 @@ class LevelModeTest {
         val score = mode.calculateScore(3, 2, 1)
         assertEquals(80, score) // 3*10 + 2*25
     }
+
+    @Test
+    fun `combo multiplier scales score`() {
+        // (3*10 + 2*25) * 4 = 320
+        assertEquals(320, mode.calculateScore(3, 2, 4))
+    }
 }

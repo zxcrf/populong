@@ -16,4 +16,6 @@
     <string name="level">关卡 %d</string>
     <string name="sound_on">音效: 开</string>
     <string name="sound_off">音效: 关</string>
+    <string name="vibration_on">震动: 开</string>
+    <string name="vibration_off">震动: 关</string>
 </resources>
