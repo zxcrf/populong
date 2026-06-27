@@ -40,7 +40,6 @@ class GameLoop(
                 try {
                     vsyncLock.wait(34)
                 } catch (_: InterruptedException) {
-                    if (!running) break
                 }
             }
 
