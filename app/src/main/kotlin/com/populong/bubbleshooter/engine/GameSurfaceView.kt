@@ -79,6 +79,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         controller = ctrl
 
         val loop = GameLoop(holder, ctrl, renderer)
+        loop.attachChoreographer()
         gameLoop = loop
         val thread = Thread(loop, "GameLoop")
         gameThread = thread
@@ -86,7 +87,7 @@ class GameSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     }
 
     private fun stopGame() {
-        gameLoop?.running = false
+        gameLoop?.stop()
         try {
             gameThread?.join(1000)
         } catch (_: InterruptedException) {

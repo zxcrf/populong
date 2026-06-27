@@ -1,9 +1,6 @@
 package com.populong.bubbleshooter.engine
 
 object GameConfig {
-    const val TARGET_FPS = 60
-    const val FRAME_DURATION_MS = 1000L / TARGET_FPS
-
     const val GRID_COLUMNS = 10
     const val GRID_MAX_ROWS = 16
 
