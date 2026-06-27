@@ -6,4 +6,5 @@
     <color name="text_secondary">#FFAAAACC</color>
     <color name="button_primary">#FF4488FF</color>
     <color name="button_secondary">#FF333355</color>
+    <color name="launcher_background">#FF1A1A2E</color>
 </resources>
