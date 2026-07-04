@@ -1,0 +1,299 @@
+package com.populong.bubbleshooter.render
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import com.populong.bubbleshooter.core.engine.Ammo
+import com.populong.bubbleshooter.core.grid.Bubble
+import com.populong.bubbleshooter.core.grid.BubbleColor
+import com.populong.bubbleshooter.ui.theme.Neon
+import kotlin.math.max
+
+/**
+ * Bakes every bubble/ammo visual variant into an [ImageBitmap] once per [radiusPx], so per-frame
+ * drawing is a cheap `drawImage` blit rather than re-running gradients and paths every tick.
+ *
+ * Sprites are square with side [sizePx]: the bubble body (`radiusPx` radius) plus a glow margin.
+ */
+class BubbleSprites(private val radiusPx: Float) {
+
+    /** Side length in px of every baked sprite bitmap: body diameter plus a glow margin. */
+    val sizePx: Int = max(2, (radiusPx * 2f * 1.6f).toInt())
+
+    private val colored: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { plainSprite(Neon.bubbleColor(it)) }
+    private val ice: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { iceSprite(Neon.bubbleColor(it), cracked = false) }
+    private val iceCracked: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { iceSprite(Neon.bubbleColor(it), cracked = true) }
+    private val fogRevealed: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { fogRevealedSprite(Neon.bubbleColor(it)) }
+    private val chained: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { chainedSprite(Neon.bubbleColor(it)) }
+    private val stoneSprite: ImageBitmap = stoneSpriteImpl()
+    private val fogUnrevealedSprite: ImageBitmap = fogUnrevealedSpriteImpl()
+    private val bombSprite: ImageBitmap = bombSpriteImpl()
+    private val rainbowSprite: ImageBitmap = rainbowSpriteImpl()
+
+    /** The baked sprite for a placed grid bubble [b]. */
+    fun forBubble(b: Bubble): ImageBitmap = when (b) {
+        is Bubble.Colored -> colored.getValue(b.color)
+        Bubble.Stone -> stoneSprite
+        is Bubble.Ice -> if (b.hitsLeft <= 1) iceCracked.getValue(b.color) else ice.getValue(b.color)
+        is Bubble.Fog -> if (b.revealed) fogRevealed.getValue(b.color) else fogUnrevealedSprite
+        is Bubble.Chained -> chained.getValue(b.color)
+    }
+
+    /** The baked sprite for a loaded/in-flight ammo [a]. */
+    fun forAmmo(a: Ammo): ImageBitmap = when (a) {
+        is Ammo.ColorAmmo -> colored.getValue(a.color)
+        Ammo.Bomb -> bombSprite
+        Ammo.Rainbow -> rainbowSprite
+    }
+
+    // --- Baking ---------------------------------------------------------------------------
+
+    private fun bake(draw: DrawScope.() -> Unit): ImageBitmap {
+        val bmp = ImageBitmap(sizePx, sizePx)
+        val canvas = Canvas(bmp)
+        CanvasDrawScope().draw(
+            density = Density(1f),
+            layoutDirection = LayoutDirection.Ltr,
+            canvas = canvas,
+            size = Size(sizePx.toFloat(), sizePx.toFloat()),
+            block = draw,
+        )
+        return bmp
+    }
+
+    private fun plainSprite(base: Color): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(base.copy(alpha = 0.35f), base.copy(alpha = 0f)),
+                center = c,
+                radius = radiusPx * 1.6f,
+            ),
+            radius = radiusPx * 1.6f,
+            center = c,
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(lighten(base, 0.55f), base, darken(base, 0.35f)),
+                center = c + Offset(-radiusPx * 0.3f, -radiusPx * 0.3f),
+                radius = radiusPx * 1.3f,
+            ),
+            radius = radiusPx,
+            center = c,
+        )
+        drawCircle(
+            color = darken(base, 0.45f).copy(alpha = 0.6f),
+            radius = radiusPx,
+            center = c,
+            style = Stroke(width = max(1f, radiusPx * 0.06f)),
+        )
+        drawOval(
+            color = Color.White.copy(alpha = 0.55f),
+            topLeft = c + Offset(-radiusPx * 0.55f, -radiusPx * 0.62f),
+            size = Size(radiusPx * 0.55f, radiusPx * 0.35f),
+        )
+    }
+
+    private fun stoneSpriteImpl(): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val base = Color(0xFF3A4152)
+        drawCircle(color = base, radius = radiusPx, center = c)
+        drawCircle(
+            color = darken(base, 0.5f).copy(alpha = 0.5f),
+            radius = radiusPx,
+            center = c,
+            style = Stroke(width = max(1f, radiusPx * 0.08f)),
+        )
+        val craterOffsets = listOf(
+            Offset(-0.35f, -0.1f),
+            Offset(0.25f, 0.3f),
+            Offset(0.05f, -0.4f),
+            Offset(-0.3f, 0.35f),
+        )
+        for (o in craterOffsets) {
+            drawCircle(
+                color = darken(base, 0.35f),
+                radius = radiusPx * 0.14f,
+                center = c + Offset(o.x * radiusPx, o.y * radiusPx),
+            )
+        }
+    }
+
+    private fun iceSprite(base: Color, cracked: Boolean): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(color = darken(base, 0.25f), radius = radiusPx, center = c)
+        drawArc(
+            color = Color(0xCCEAF6FF),
+            startAngle = 200f,
+            sweepAngle = 160f,
+            useCenter = true,
+            topLeft = c - Offset(radiusPx, radiusPx),
+            size = Size(radiusPx * 2f, radiusPx * 2f),
+            alpha = 0.55f,
+        )
+        drawCircle(
+            color = Color(0x66FFFFFF),
+            radius = radiusPx,
+            center = c,
+            style = Stroke(width = max(1f, radiusPx * 0.08f)),
+        )
+        if (cracked) {
+            val strokeW = max(1f, radiusPx * 0.08f)
+            drawLine(
+                color = Color(0xAAFFFFFF),
+                start = c + Offset(-radiusPx * 0.5f, -radiusPx * 0.2f),
+                end = c + Offset(radiusPx * 0.4f, radiusPx * 0.5f),
+                strokeWidth = strokeW,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = Color(0xAAFFFFFF),
+                start = c + Offset(radiusPx * 0.5f, -radiusPx * 0.35f),
+                end = c + Offset(-radiusPx * 0.1f, radiusPx * 0.4f),
+                strokeWidth = strokeW,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
+
+    private fun fogUnrevealedSpriteImpl(): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val base = Color(0xFF2A2440)
+        val qColor = Color(0xFFCFC6FF)
+        drawCircle(color = base, radius = radiusPx, center = c)
+        drawCircle(
+            color = Color(0xFF6A5AA0).copy(alpha = 0.4f),
+            radius = radiusPx,
+            center = c,
+            style = Stroke(width = max(1f, radiusPx * 0.08f)),
+        )
+        drawArc(
+            color = qColor,
+            startAngle = -150f,
+            sweepAngle = 200f,
+            useCenter = false,
+            topLeft = c + Offset(-radiusPx * 0.35f, -radiusPx * 0.5f),
+            size = Size(radiusPx * 0.7f, radiusPx * 0.6f),
+            style = Stroke(width = max(1f, radiusPx * 0.13f), cap = StrokeCap.Round),
+        )
+        drawLine(
+            color = qColor,
+            start = c + Offset(0f, radiusPx * 0.05f),
+            end = c + Offset(0f, radiusPx * 0.28f),
+            strokeWidth = max(1f, radiusPx * 0.13f),
+            cap = StrokeCap.Round,
+        )
+        drawCircle(color = qColor, radius = radiusPx * 0.09f, center = c + Offset(0f, radiusPx * 0.5f))
+    }
+
+    private fun fogRevealedSprite(base: Color): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(color = base, radius = radiusPx, center = c)
+        drawCircle(
+            color = lighten(base, 0.4f),
+            radius = radiusPx * 0.6f,
+            center = c - Offset(radiusPx * 0.25f, radiusPx * 0.25f),
+            alpha = 0.4f,
+        )
+        for (i in 1..3) {
+            drawCircle(
+                color = Color.White.copy(alpha = 0.15f / i),
+                radius = radiusPx * (0.5f + i * 0.2f),
+                center = c,
+                style = Stroke(width = max(1f, radiusPx * 0.04f)),
+            )
+        }
+    }
+
+    private fun chainedSprite(base: Color): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val strokeW = max(1f, radiusPx * 0.16f)
+        val dark = Color(0xFF14141C)
+        drawCircle(color = darken(base, 0.15f), radius = radiusPx, center = c)
+        drawLine(
+            color = dark,
+            start = c + Offset(-radiusPx * 0.6f, -radiusPx * 0.6f),
+            end = c + Offset(radiusPx * 0.6f, radiusPx * 0.6f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = dark,
+            start = c + Offset(radiusPx * 0.6f, -radiusPx * 0.6f),
+            end = c + Offset(-radiusPx * 0.6f, radiusPx * 0.6f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round,
+        )
+        val linkOffsets = listOf(Offset(0f, -1f), Offset(0f, 1f), Offset(-1f, 0f), Offset(1f, 0f))
+        for (o in linkOffsets) {
+            drawCircle(
+                color = Color(0xFF8A8FA0),
+                radius = radiusPx * 0.12f,
+                center = c + Offset(o.x * radiusPx * 0.95f, o.y * radiusPx * 0.95f),
+                style = Stroke(width = max(1f, radiusPx * 0.05f)),
+            )
+        }
+    }
+
+    private fun bombSpriteImpl(): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(color = Color(0xFF0D0D12), radius = radiusPx, center = c)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFFC94D), Color(0xFFFF5C1A).copy(alpha = 0.6f), Color.Transparent),
+                center = c,
+                radius = radiusPx * 0.9f,
+            ),
+            radius = radiusPx * 0.75f,
+            center = c,
+        )
+        drawCircle(
+            color = Color(0xFFFFE9B0),
+            radius = radiusPx * 0.12f,
+            center = c - Offset(radiusPx * 0.25f, radiusPx * 0.25f),
+        )
+    }
+
+    private fun rainbowSpriteImpl(): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val colors = BubbleColor.all.map { Neon.bubbleColor(it) }
+        val n = colors.size
+        for ((i, color) in colors.withIndex()) {
+            val r = radiusPx * (1f - i.toFloat() / n)
+            drawCircle(color = color, radius = r, center = c)
+        }
+        drawOval(
+            color = Color.White.copy(alpha = 0.5f),
+            topLeft = c + Offset(-radiusPx * 0.5f, -radiusPx * 0.6f),
+            size = Size(radiusPx * 0.5f, radiusPx * 0.3f),
+        )
+    }
+
+    private fun lighten(c: Color, amt: Float): Color = Color(
+        red = c.red + (1f - c.red) * amt,
+        green = c.green + (1f - c.green) * amt,
+        blue = c.blue + (1f - c.blue) * amt,
+        alpha = c.alpha,
+    )
+
+    private fun darken(c: Color, amt: Float): Color = Color(
+        red = c.red * (1f - amt),
+        green = c.green * (1f - amt),
+        blue = c.blue * (1f - amt),
+        alpha = c.alpha,
+    )
+}
