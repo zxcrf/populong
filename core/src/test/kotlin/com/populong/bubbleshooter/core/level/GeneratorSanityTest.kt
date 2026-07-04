@@ -51,9 +51,24 @@ class GeneratorSanityTest {
                         }
                         assertTrue(free, "level $n chained cell $pos has no free neighbor")
                     }
+                    is Bubble.Supernova -> {
+                        assertTrue(n >= SUPERNOVA_GATE, "level $n has a supernova before the gate at $pos")
+                        val reachable = grid.neighbors(pos).any { nb ->
+                            when (val b = grid.bubbleAt(nb)) {
+                                is Bubble.Colored -> b.color == bubble.color
+                                is Bubble.Supernova -> b.color == bubble.color
+                                else -> false
+                            }
+                        }
+                        assertTrue(reachable, "level $n supernova $pos has no same-color neighbor")
+                    }
                     else -> Unit
                 }
             }
+
+            // Supernovae are hard-capped per level.
+            val supernovae = grid.cells.values.count { it is Bubble.Supernova }
+            assertTrue(supernovae <= 2, "level $n has $supernovae supernovae (cap is 2)")
 
             // Scoring and budget.
             val stars = spec.starThresholds
@@ -67,6 +82,7 @@ class GeneratorSanityTest {
         is Bubble.Ice -> bubble.color
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
+        is Bubble.Supernova -> bubble.color
         Bubble.Stone -> null
     }
 }

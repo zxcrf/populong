@@ -31,10 +31,14 @@ class LevelGeneratorTest {
     @Test
     fun `generated levels match their pinned golden hashes`() {
         val golden = mapOf(
+            // Level 51 predates the supernova gate (90) and is the stability witness: its hash is
+            // unchanged by the supernova rollout. Levels 100/500/1000 were re-pinned when supernovae
+            // landed in them; 1500/2000 kept their pre-rollout hashes because no supernova was placed
+            // (the placement pass runs last and only mutates the grid when a cell is actually promoted).
             51 to -4157053415450925333L,
-            100 to -9011342232385074180L,
-            500 to 7663537859975801326L,
-            1000 to -7961055535244380147L,
+            100 to -3843162708054950960L,
+            500 to 8537860111280716930L,
+            1000 to 4750652191919241665L,
             1500 to 5917107105573537463L,
             2000 to 8641612126810079564L,
         )
@@ -63,6 +67,7 @@ class LevelGeneratorTest {
             is Bubble.Ice -> 300 + b.color.ordinal * 10 + b.hitsLeft
             is Bubble.Fog -> 400 + b.color.ordinal
             is Bubble.Chained -> 500 + b.color.ordinal
+            is Bubble.Supernova -> 600 + b.color.ordinal
         }
     }
 }

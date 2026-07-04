@@ -117,16 +117,21 @@ object GreedyBot {
         Ammo.Rainbow -> {
             var best = 0
             for (color in neighborColors(grid, cell)) {
-                val size = matchSizeAt(grid, cell, color)
-                if (size >= 3 && size > best) best = size
+                val group = matchGroupAt(grid, cell, color)
+                val value = group.size + novaBonus(grid, group)
+                if (group.size >= 3 && value > best) best = value
             }
             if (best >= 3) best + landingBonus(grid, cell) else 0
         }
         is Ammo.ColorAmmo -> {
-            val size = matchSizeAt(grid, cell, ammo.color)
-            if (size >= 3) size + landingBonus(grid, cell) else 0
+            val group = matchGroupAt(grid, cell, ammo.color)
+            if (group.size >= 3) group.size + landingBonus(grid, cell) + novaBonus(grid, group) else 0
         }
     }
+
+    /** Extra value for clearing supernovae in a hypothetical match, so the bot seeks their shockwaves. */
+    private fun novaBonus(grid: BubbleGrid, group: Set<GridPos>): Int =
+        4 * group.count { grid.bubbleAt(it) is Bubble.Supernova }
 
     /** A small nudge toward high (anchor-cutting) landings and toward cracking adjacent ice. */
     private fun landingBonus(grid: BubbleGrid, cell: GridPos): Int {
@@ -149,16 +154,16 @@ object GreedyBot {
     }
 
     /**
-     * Size of the same-color cluster a bubble of [color] placed at the empty [cell] would join.
-     * Optimistically treats fog of the matching color as revealed (the engine reveals fog around a
-     * landing before matching), and never counts still-frozen ice or locked chains.
+     * The same-color cluster (including [cell]) a bubble of [color] placed at the empty [cell] would
+     * join. Optimistically treats fog of the matching color as revealed (the engine reveals fog
+     * around a landing before matching) and counts supernovae of that color, but never still-frozen
+     * ice or locked chains.
      */
-    private fun matchSizeAt(grid: BubbleGrid, cell: GridPos, color: BubbleColor): Int {
+    private fun matchGroupAt(grid: BubbleGrid, cell: GridPos, color: BubbleColor): Set<GridPos> {
         val visited = HashSet<GridPos>()
         visited.add(cell)
         val stack = ArrayDeque<GridPos>()
         stack.addLast(cell)
-        var size = 1
         while (stack.isNotEmpty()) {
             val cur = stack.removeLast()
             for (nb in grid.occupiedNeighbors(cur)) {
@@ -166,16 +171,16 @@ object GreedyBot {
                 if (sameTarget(grid.bubbleAt(nb), color)) {
                     visited.add(nb)
                     stack.addLast(nb)
-                    size++
                 }
             }
         }
-        return size
+        return visited
     }
 
-    /** Whether [bubble] would match [color] this turn (colored, or fog of that color about to reveal). */
+    /** Whether [bubble] would match [color] this turn (colored/supernova, or fog about to reveal). */
     private fun sameTarget(bubble: Bubble?, color: BubbleColor): Boolean = when (bubble) {
         is Bubble.Colored -> bubble.color == color
+        is Bubble.Supernova -> bubble.color == color
         is Bubble.Fog -> bubble.color == color
         else -> false
     }

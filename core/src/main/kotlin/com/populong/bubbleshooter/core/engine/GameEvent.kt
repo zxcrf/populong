@@ -19,6 +19,17 @@ sealed interface GameEvent {
     /** A bomb removed [cells]. */
     data class BombExploded(val cells: Set<GridPos>) : GameEvent
 
+    /**
+     * One or more supernovae detonated during a single shot resolution. [origins] are the supernova
+     * cells that fired, [removed] every cell cleared by the chained shockwave (including the seeding
+     * match and the origins), and [waves] the number of chain generations that detonated.
+     */
+    data class SupernovaChained(
+        val origins: Set<GridPos>,
+        val removed: Set<GridPos>,
+        val waves: Int,
+    ) : GameEvent
+
     /** [cells] fell after losing support; [scoreGained] the points awarded. */
     data class Fell(val cells: Set<GridPos>, val scoreGained: Long) : GameEvent
 

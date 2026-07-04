@@ -20,6 +20,8 @@ enum class Archetype { CHECKER, ARCHES, DIAMONDS, BLOBS, FORTRESS, SPIRAL }
  * @property iceDensity fraction eligible for [com.populong.bubbleshooter.core.grid.Bubble.Ice].
  * @property fogDensity fraction eligible for [com.populong.bubbleshooter.core.grid.Bubble.Fog].
  * @property chainDensity fraction eligible for [com.populong.bubbleshooter.core.grid.Bubble.Chained].
+ * @property supernovaDensity per-cell probability a colored cell is promoted to a
+ *   [com.populong.bubbleshooter.core.grid.Bubble.Supernova] (0 before the late-campaign rollout gate).
  * @property shotsSlack spare shots added on top of the bubble-count estimate.
  * @property archetype the silhouette to grow into.
  * @property isBoss whether this is a galaxy-capping fortress level.
@@ -35,6 +37,7 @@ data class GenParams(
     val iceDensity: Float,
     val fogDensity: Float,
     val chainDensity: Float,
+    val supernovaDensity: Float,
     val shotsSlack: Int,
     val archetype: Archetype,
     val isBoss: Boolean,
@@ -49,7 +52,8 @@ data class GenParams(
  * The campaign is organized into 20-level galaxies. Difficulty ramps log-ishly with the level
  * number while a per-galaxy sawtooth makes the first levels of each galaxy a breather. Every 20th
  * level is a denser [Archetype.FORTRESS] boss. Mechanics unlock at fixed gates — stone at 51, ice at
- * 60, fog at 80, chains at 100 — and each galaxy themes itself around one dominant obstacle.
+ * 60, fog at 80, supernovae at 90, chains at 100 — and each galaxy themes itself around one dominant
+ * obstacle.
  */
 fun paramsFor(level: Int): GenParams {
     require(level >= 51) { "paramsFor is for generated levels (>= 51); $level is hand-authored" }
@@ -88,6 +92,10 @@ fun paramsFor(level: Int): GenParams {
     val fogDensity = ramp(level, FOG_GATE, 0.02f, 0.07f) * weight(2) * bossScale
     val chainDensity = ramp(level, CHAIN_GATE, 0.02f, 0.06f) * weight(3) * bossScale
 
+    // Supernovae are a flat, rare late-campaign spice — a ~1% per-cell chance past the gate, hard-
+    // capped to two per level by the generator, unscaled by galaxy theme or boss status.
+    val supernovaDensity = if (level >= SUPERNOVA_GATE) 0.01f else 0f
+
     val shotsSlack = (6.0 - 4.0 * t).roundToInt().coerceIn(2, 6)
 
     val bombEvery = when {
@@ -114,6 +122,7 @@ fun paramsFor(level: Int): GenParams {
         iceDensity = iceDensity,
         fogDensity = fogDensity,
         chainDensity = chainDensity,
+        supernovaDensity = supernovaDensity,
         shotsSlack = shotsSlack,
         archetype = archetype,
         isBoss = isBoss,
@@ -160,3 +169,6 @@ private const val ICE_GATE = 60
 private const val FOG_GATE = 80
 private const val CHAIN_GATE = 100
 private const val DESCENT_GATE = 300
+
+/** First generated level that may carry supernovae; the late-campaign rollout gate. */
+const val SUPERNOVA_GATE = 90

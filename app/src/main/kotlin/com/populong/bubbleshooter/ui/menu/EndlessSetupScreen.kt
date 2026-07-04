@@ -42,7 +42,7 @@ import java.util.Locale
 
 /** Chinese display name + effect string for each [Mutator]. */
 private fun Mutator.displayLabel(): String = when (this) {
-    Mutator.FASTER_DESCENT -> "加速下压 ×1.5"
+    Mutator.FASTER_DESCENT -> "天花板下压 ×1.5"
     Mutator.EXTRA_COLOR -> "第五色 ×1.4"
     Mutator.SHORT_AIM -> "短瞄准线 ×1.3"
     Mutator.NARROW_FIELD -> "窄场地 ×1.25"

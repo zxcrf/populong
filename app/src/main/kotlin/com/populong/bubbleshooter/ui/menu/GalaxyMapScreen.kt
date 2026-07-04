@@ -55,6 +55,7 @@ import com.populong.bubbleshooter.core.grid.Bubble
 import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.progress.SaveData
 import com.populong.bubbleshooter.core.progress.highestUnlockedLevel
+import com.populong.bubbleshooter.ui.theme.GalaxyTheme
 import com.populong.bubbleshooter.ui.theme.Neon
 import com.populong.bubbleshooter.ui.theme.NeonPanel
 import kotlin.math.cos
@@ -249,8 +250,8 @@ private fun GalaxyHeader(galaxy: Int, save: SaveData) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "第 $galaxy 星系",
-            color = Neon.textPrimary,
+            text = "第 $galaxy 星系 · ${GalaxyTheme.forGalaxy(galaxy).name}",
+            color = GalaxyTheme.forGalaxy(galaxy).accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f),
@@ -281,6 +282,7 @@ private fun LevelPreviewDialog(
                 is Bubble.Ice -> kinds.add("冰冻")
                 is Bubble.Fog -> kinds.add("迷雾")
                 is Bubble.Chained -> kinds.add("锁链")
+                is Bubble.Supernova -> kinds.add("超新星")
                 is Bubble.Colored -> Unit
             }
         }
@@ -399,6 +401,20 @@ private fun GalaxyItem(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
+
+            // A soft wash of the galaxy's own nebula palette, so scrolling the map
+            // reads as traveling through differently-hued regions of space.
+            val palette = GalaxyTheme.forGalaxy(galaxy)
+            drawRect(
+                brush = Brush.verticalGradient(
+                    listOf(
+                        palette.bgMid.copy(alpha = 0.0f),
+                        palette.bgDeep.copy(alpha = 0.35f),
+                        palette.bgMid.copy(alpha = 0.0f),
+                    ),
+                ),
+                size = size,
+            )
 
             // Constellation lines, in level order.
             for (i in 0 until slots.size - 1) {

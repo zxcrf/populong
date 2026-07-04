@@ -7,6 +7,7 @@ import com.populong.bubbleshooter.core.grid.GridPos
 import com.populong.bubbleshooter.core.grid.Vec2
 import com.populong.bubbleshooter.core.level.LevelSpec
 import com.populong.bubbleshooter.core.mode.GameMode
+import com.populong.bubbleshooter.core.mode.Mutator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -283,6 +284,110 @@ class GameEngineTest {
         assertNull(s2.grid.bubbleAt(pos(0, 5)))
     }
 
+    // --- supernova shockwave ------------------------------------------------------------------
+
+    private val YELLOW = BubbleColor.YELLOW
+
+    @Test
+    fun `a match popping a supernova clears small off-color groups of any size within its radius`() {
+        // Landing RED at (0,4) completes a RED trio that includes the supernova at (0,5). Its
+        // shockwave then vaporizes the lone off-color BLUE at (0,7) — a group of size 1 that a plain
+        // match could never remove — while the distant GREEN survivor is left untouched.
+        val mode = level(
+            mapOf(
+                pos(0, 0) to Bubble.Colored(GREEN), // far survivor, keeps the level unwon
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Supernova(RED),
+                pos(0, 7) to Bubble.Colored(BLUE), // off-color singleton within radius 2
+            ),
+        )
+        val (s, events) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+
+        val popped = events.only<GameEvent.Popped>()
+        assertEquals(setOf(pos(0, 3), pos(0, 4), pos(0, 5), pos(0, 7)), popped.cells)
+        assertEquals(RED, popped.color)
+
+        val nova = events.only<GameEvent.SupernovaChained>()
+        assertEquals(setOf(pos(0, 5)), nova.origins)
+        assertTrue(pos(0, 7) in nova.removed, "the shockwave should reach the off-color singleton")
+        assertEquals(1, nova.waves)
+
+        assertNull(s.grid.bubbleAt(pos(0, 7)))
+        assertEquals(Bubble.Colored(GREEN), s.grid.bubbleAt(pos(0, 0)))
+        // Scoring is at the current combo (1) over the whole cleared set: 10 * 4 * 1.
+        assertEquals(40L, popped.scoreGained)
+        assertEquals(40L, s.score)
+        assertEquals(Phase.AIMING, s.phase)
+    }
+
+    @Test
+    fun `a supernova shockwave chains into a second supernova and extends its reach`() {
+        // The first supernova (RED, (0,5)) detonates and engulfs the BLUE supernova at (0,7); that
+        // second detonation then clears the GREEN at (2,8), which lies beyond the first blast's radius.
+        val mode = level(
+            mapOf(
+                pos(0, 0) to Bubble.Colored(YELLOW), // far survivor
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Supernova(RED),
+                pos(0, 7) to Bubble.Supernova(BLUE),
+                pos(2, 8) to Bubble.Colored(GREEN), // reachable only from the second supernova
+            ),
+        )
+        val (s, events) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+
+        val nova = events.only<GameEvent.SupernovaChained>()
+        assertEquals(setOf(pos(0, 5), pos(0, 7)), nova.origins)
+        assertEquals(2, nova.waves)
+        assertTrue(pos(2, 8) in nova.removed, "the chained blast should reach the far green")
+
+        assertNull(s.grid.bubbleAt(pos(0, 7)))
+        assertNull(s.grid.bubbleAt(pos(2, 8)))
+        assertEquals(Bubble.Colored(YELLOW), s.grid.bubbleAt(pos(0, 0)))
+    }
+
+    @Test
+    fun `a shockwave passes over stone and chained and cracks ice without removing it`() {
+        // Non-matchable obstacles in the blast radius are left in place: the stone and chained bubbles
+        // survive, and the ice loses a hit via afterPop (adjacent to a cleared cell) but stays frozen.
+        val mode = level(
+            mapOf(
+                pos(0, 0) to Bubble.Colored(GREEN), // far survivor
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Supernova(RED),
+                pos(0, 6) to Bubble.Ice(BLUE, hitsLeft = 2), // adjacent to the nova, within radius
+                pos(0, 7) to Bubble.Stone, // within radius 2
+                pos(0, 8) to Bubble.Chained(RED), // survivor just outside the radius
+            ),
+        )
+        val (s, events) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+
+        val nova = events.only<GameEvent.SupernovaChained>()
+        assertEquals(setOf(pos(0, 3), pos(0, 4), pos(0, 5)), nova.removed)
+
+        assertTrue(events.only<GameEvent.IceCracked>().cells.contains(pos(0, 6)))
+        assertEquals(Bubble.Ice(BLUE, hitsLeft = 1), s.grid.bubbleAt(pos(0, 6)))
+        assertEquals(Bubble.Stone, s.grid.bubbleAt(pos(0, 7)))
+        assertEquals(Bubble.Chained(RED), s.grid.bubbleAt(pos(0, 8)))
+    }
+
+    @Test
+    fun `a supernova script resolves identically on repeat`() {
+        val cells = mapOf(
+            pos(0, 0) to Bubble.Colored(GREEN),
+            pos(0, 3) to Bubble.Colored(RED),
+            pos(0, 5) to Bubble.Supernova(RED),
+            pos(0, 7) to Bubble.Supernova(BLUE),
+            pos(2, 8) to Bubble.Colored(GREEN),
+        )
+        val mode = level(cells)
+        val (a, ea) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+        val (b, eb) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+        assertEquals(a.grid.cells, b.grid.cells)
+        assertEquals(a.score, b.score)
+        assertEquals(a.rngState, b.rngState)
+        assertEquals(ea.filterIsInstance<GameEvent.SupernovaChained>(), eb.filterIsInstance<GameEvent.SupernovaChained>())
+    }
+
     // --- determinism --------------------------------------------------------------------------
 
     @Test
@@ -345,9 +450,9 @@ class GameEngineTest {
     }
 
     @Test
-    fun `endless keeps inserting rows until the field overflows and loses`() {
+    fun `endless descent mutator keeps inserting rows until the field overflows and loses`() {
         val tightEngine = GameEngine(GameConfig(maxRows = 6, endlessRowEveryShots = 1))
-        var s = tightEngine.initialState(GameMode.Endless(emptySet()), seed = 3L)
+        var s = tightEngine.initialState(GameMode.Endless(setOf(Mutator.FASTER_DESCENT)), seed = 3L)
         var sawRowInserted = false
         var guard = 0
         while (s.phase != Phase.LOST && guard++ < 50) {
@@ -357,6 +462,33 @@ class GameEngineTest {
         }
         assertEquals(Phase.LOST, s.phase)
         assertTrue(sawRowInserted, "rows should have been inserted before losing")
+    }
+
+    @Test
+    fun `endless without descent never inserts on shot cadence but refills a low board`() {
+        // Descent off: after many shots on a healthy board, no rows appear...
+        var s = engine.initialState(GameMode.Endless(emptySet()), seed = 3L)
+        val startingBubbles = s.grid.cells.size
+        var guard = 0
+        while (s.phase == Phase.AIMING && guard++ < 8 && s.grid.cells.size >= startingBubbles / 2) {
+            val (ns, events) = fire(s)
+            s = ns
+            assertTrue(
+                events.none { it is GameEvent.RowInserted } ||
+                    s.grid.cells.size < engine.let { GameConfig().endlessRefillThreshold } + 8,
+                "row inserted while the board was still healthy and descent was off",
+            )
+        }
+        // ...but a nearly-empty board triggers a refill on the next resolution.
+        val lowGrid = BubbleGrid(
+            cells = mapOf(pos(0, 3) to Bubble.Colored(BLUE), pos(0, 4) to Bubble.Colored(GREEN)),
+            evenCols = 8,
+            ceilingRow = 0,
+        )
+        val lowState = engine.initialState(GameMode.Endless(emptySet()), seed = 7L).copy(grid = lowGrid)
+        val (after, events) = fire(lowState.copy(currentAmmo = Ammo.ColorAmmo(RED)))
+        assertTrue(events.any { it is GameEvent.RowInserted }, "low board should refill a row")
+        assertTrue(after.grid.cells.size > 2)
     }
 
     // --- fever --------------------------------------------------------------------------------
@@ -415,6 +547,7 @@ class GameEngineTest {
                 is Bubble.Ice -> it.color
                 is Bubble.Fog -> it.color
                 is Bubble.Chained -> it.color
+                is Bubble.Supernova -> it.color
                 Bubble.Stone -> null
             }
         }.toSet()

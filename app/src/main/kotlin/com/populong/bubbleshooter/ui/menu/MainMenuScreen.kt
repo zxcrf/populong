@@ -16,9 +16,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -203,7 +203,7 @@ fun MainMenuScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 MenuIconButton(label = "⚙ 设置", onClick = { playAndGo(onOpenSettings) })
                 MenuIconButton(label = "🏆 成就", onClick = { playAndGo(onOpenAchievements) })
                 MenuIconButton(label = "📊 统计", onClick = { playAndGo(onOpenStats) })
@@ -212,15 +212,26 @@ fun MainMenuScreen(
     }
 }
 
-/** A 48dp-square tap target for the bottom icon row, matching [NeonTopBar]'s back-button target. */
+/**
+ * A bottom icon-row tap target, at least 48dp tall (matching [NeonTopBar]'s back-button target)
+ * but sized to its label's content width rather than a fixed 48dp square — a fixed-width square
+ * was too narrow for a 4-character label plus emoji and forced it onto two lines.
+ */
 @Composable
 private fun MenuIconButton(label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 8.dp)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, color = Neon.textDim, fontSize = 15.sp)
+        Text(
+            text = label,
+            color = Neon.textDim,
+            fontSize = 13.sp,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }

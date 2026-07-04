@@ -49,6 +49,37 @@ class LevelDslTest {
     }
 
     @Test
+    fun `the supernova token parses to a supernova of its color`() {
+        val spec = level(
+            id = 8,
+            palette = 4,
+            shots = 20,
+            star1 = 100, star2 = 200, star3 = 300,
+            grid = """
+                NR B NG Y R B G .
+                . . . . . . .
+            """,
+        )
+        assertEquals(Bubble.Supernova(BubbleColor.RED), spec.initialGrid.bubbleAt(pos(0, 0)))
+        assertEquals(Bubble.Supernova(BubbleColor.GREEN), spec.initialGrid.bubbleAt(pos(0, 2)))
+        assertEquals(Bubble.Colored(BubbleColor.YELLOW), spec.initialGrid.bubbleAt(pos(0, 3)))
+    }
+
+    @Test
+    fun `a supernova wrapping an out-of-palette color is rejected`() {
+        val ex = assertFailsWith<IllegalArgumentException> {
+            level(
+                id = 6, palette = 3, shots = 5, star1 = 1, star2 = 2, star3 = 3,
+                grid = """
+                    R B G NY . . . .
+                    . . . . . . .
+                """,
+            )
+        }
+        assertTrue("NY" in ex.message!!, "message names the offending token: ${ex.message}")
+    }
+
+    @Test
     fun `parity fixes the token count of each row`() {
         // Even rows need evenCols tokens, odd rows one fewer; a smaller field is honored too.
         val spec = level(

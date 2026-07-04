@@ -68,7 +68,7 @@ object MusicSynth {
         val (bpm, notes) = when (style) {
             MusicStyle.CHIPTUNE -> 120 to buildChiptuneNotes()
             MusicStyle.SYNTHWAVE -> 90 to buildSynthwaveNotes()
-            MusicStyle.KAWAII -> 140 to buildKawaiiNotes()
+            MusicStyle.KAWAII -> 116 to buildKawaiiNotes()
         }
         return render(bpm, notes)
     }
@@ -330,7 +330,7 @@ object MusicSynth {
     }
 
     // ---------------------------------------------------------------------------------------
-    // KAWAII — 140 BPM, C major pentatonic (C D E G A)
+    // KAWAII — 116 BPM, C major pentatonic (C D E G A)
     // ---------------------------------------------------------------------------------------
 
     private val pentatonicMajorC = intArrayOf(0, 2, 4, 7, 9) // C, D, E, G, A
@@ -340,45 +340,66 @@ object MusicSynth {
         val rootC5 = 72
         val rootC3 = 48
 
-        // One-bar bouncy dotted-8th/16th motif: C5 E5 G5 A5 G5 E5 C5, staccato, tiled every bar.
-        // Pairs of (dotted-8th, 16th) fill three beats; the fourth beat repeats the tonic and
-        // leaves a short rest to breathe before the next bar.
+        // Two-bar (8-beat) breathing phrase: a gentle arc C5 E5 G5 A5 G5 E5, then a single long
+        // tail note and silence — the melody breathes every 2 bars instead of packing every beat
+        // (the old 1-bar-tiled dotted-8th/16th motif at 140 BPM read as rushed/anxious). Lengths
+        // are 8th-note based (0.5 beat) with occasional quarters (1.0 beat).
         data class LeadEvent(val beatStart: Double, val lengthBeats: Double, val degree: Int)
-        val leadMotif = listOf(
-            LeadEvent(0.0, 0.75, 0),  // C5
-            LeadEvent(0.75, 0.25, 2), // E5
-            LeadEvent(1.0, 0.75, 3),  // G5
-            LeadEvent(1.75, 0.25, 4), // A5
-            LeadEvent(2.0, 0.75, 3),  // G5
-            LeadEvent(2.75, 0.25, 2), // E5
-            LeadEvent(3.0, 0.75, 0),  // C5
-            // beat 3.75-4.0: rest
+        val leadPhrase = listOf(
+            LeadEvent(0.0, 1.0, 0), // C5 (quarter)
+            LeadEvent(1.0, 0.5, 2), // E5
+            LeadEvent(1.5, 0.5, 3), // G5
+            LeadEvent(2.0, 1.0, 4), // A5 (quarter)
+            LeadEvent(3.0, 0.5, 3), // G5
+            LeadEvent(3.5, 0.5, 2), // E5
+            // beats 4.0-6.0: rest — a full bar to breathe
+            LeadEvent(6.0, 1.0, 0), // C5 tail note, left to ring
+            // beats 7.0-8.0: rest, before the phrase repeats
         )
 
-        for (bar in 0 until BARS) {
-            for (event in leadMotif) {
-                val startBeat = bar * BEATS_PER_BAR + event.beatStart
-                val soundingLength = event.lengthBeats * 0.6 // staccato
-                val midi = degreeToMidi(rootC5, event.degree, pentatonicMajorC)
-                // Sine-bell: fundamental + a quiet octave-up partial.
-                notes += Note(startBeat, soundingLength, midi, Waveform.SINE, amp = 0.22f, decayK = 4.0)
-                notes += Note(startBeat, soundingLength, midi + 12, Waveform.SINE, amp = 0.22f * 0.3f, decayK = 4.0)
+        val phraseBeats = (BEATS_PER_BAR * 2).toDouble()
+        val phraseCount = BARS / 2 // eight 2-bar phrases across all 16 bars
 
-                // (b) Counter blip (triangle) answering in the staccato gap left behind, two
-                // scale degrees below the lead note.
-                val blipStart = startBeat + soundingLength
-                val blipLength = event.lengthBeats - soundingLength
-                if (blipLength > 0.05) {
-                    val blipMidi = degreeToMidi(rootC5, event.degree - 2, pentatonicMajorC)
-                    notes += Note(blipStart, blipLength * 0.8, blipMidi, Waveform.TRIANGLE, amp = 0.12f, decayK = 5.0)
-                }
+        for (phrase in 0 until phraseCount) {
+            val phraseStartBeat = phrase * phraseBeats
+            for (event in leadPhrase) {
+                val startBeat = phraseStartBeat + event.beatStart
+                val soundingLength = event.lengthBeats * 0.9 // mostly legato now, not staccato
+                val midi = degreeToMidi(rootC5, event.degree, pentatonicMajorC)
+                // Sine-bell: fundamental + a quiet octave-up partial. decayK halved vs. the old
+                // staccato version (4.0 -> 2.0) so notes ring instead of feeling plucked.
+                notes += Note(startBeat, soundingLength, midi, Waveform.SINE, amp = 0.22f, decayK = 2.0)
+                notes += Note(startBeat, soundingLength, midi + 12, Waveform.SINE, amp = 0.22f * 0.3f, decayK = 2.0)
             }
 
-            // (c) Bass: C3 G2 alternating quarters.
-            // (In this C,D,E,G,A interval ordering, A sits last in the array, so degree -1 would
-            // wrap to A2, not G2 — degree -2 is the one that lands on G2, one whole octave below
-            // rootC3's G.)
-            val bassPattern = intArrayOf(0, -2, 0, -2) // degree 0 = C3, degree -2 = G2
+            // (b) Counter blips (triangle), now answering only in the bar-end gaps — once at the
+            // end of bar 1 of the phrase, once at the end of bar 2 — instead of filling the gap
+            // after every single lead note.
+            notes += Note(
+                startBeat = phraseStartBeat + 3.75,
+                lengthBeats = 0.2,
+                midi = degreeToMidi(rootC5, 3 - 2, pentatonicMajorC),
+                waveform = Waveform.TRIANGLE,
+                amp = 0.10f,
+                decayK = 5.0,
+            )
+            notes += Note(
+                startBeat = phraseStartBeat + 7.0,
+                lengthBeats = 0.6,
+                midi = degreeToMidi(rootC5, 0 - 2, pentatonicMajorC),
+                waveform = Waveform.TRIANGLE,
+                amp = 0.10f,
+                decayK = 5.0,
+            )
+        }
+
+        // (c) Bass: C3 G2 alternating quarters, unchanged — stays gentle and steady under the
+        // slower melody above.
+        // (In this C,D,E,G,A interval ordering, A sits last in the array, so degree -1 would
+        // wrap to A2, not G2 — degree -2 is the one that lands on G2, one whole octave below
+        // rootC3's G.)
+        val bassPattern = intArrayOf(0, -2, 0, -2) // degree 0 = C3, degree -2 = G2
+        for (bar in 0 until BARS) {
             for (beat in 0 until BEATS_PER_BAR) {
                 val midi = degreeToMidi(rootC3, bassPattern[beat], pentatonicMajorC)
                 notes += Note(
@@ -390,18 +411,19 @@ object MusicSynth {
                     decayK = 1.5,
                 )
             }
+        }
 
-            // (d) Light noise ticks on 16th off-beats, every other bar.
-            if (bar % 2 == 0) {
-                for (slot in 1 until 16 step 2) {
-                    notes += Note(
-                        startBeat = bar * BEATS_PER_BAR + slot * 0.25,
-                        lengthBeats = 0.08,
-                        waveform = Waveform.NOISE,
-                        amp = 0.05f,
-                        decayK = 10.0,
-                    )
-                }
+        // (d) The old every-other-bar 16th-note noise ticks read as rushed hi-hats; keep only a
+        // soft fill in bars 8 and 16 (indices 7 and 15) as a light accent into the loop seam.
+        for (bar in intArrayOf(7, 15)) {
+            for (slot in 1 until 16 step 2) {
+                notes += Note(
+                    startBeat = bar * BEATS_PER_BAR + slot * 0.25,
+                    lengthBeats = 0.08,
+                    waveform = Waveform.NOISE,
+                    amp = 0.05f,
+                    decayK = 10.0,
+                )
             }
         }
 

@@ -19,6 +19,7 @@ import com.populong.bubbleshooter.core.grid.GridPos
  * - `I`+color (e.g. `IR`) a [Bubble.Ice] with `hitsLeft = 2`.
  * - `F`+color a hidden [Bubble.Fog] (`revealed = false`).
  * - `C`+color a [Bubble.Chained] cell.
+ * - `N`+color (e.g. `NR`) a [Bubble.Supernova] — matches as its color and detonates a shockwave when popped.
  *
  * Every color letter must lie inside the first [palette] entries; `palette = 4` admits `R B G Y`
  * only. Malformed input throws [IllegalArgumentException] naming the level [id], the offending row
@@ -91,6 +92,7 @@ private fun parseToken(
             'I' -> Bubble.Ice(color, hitsLeft = 2)
             'F' -> Bubble.Fog(color, revealed = false)
             'C' -> Bubble.Chained(color)
+            'N' -> Bubble.Supernova(color)
             else -> throw IllegalArgumentException("level $id: row $row: unknown token '$token'")
         }
     }

@@ -30,11 +30,20 @@ sealed interface Bubble {
      * component to the backdrop until it is unlocked (replaced by [Colored]).
      */
     data class Chained(val color: BubbleColor) : Bubble
+
+    /**
+     * A supernova (超新星) bubble. It matches like a plain [Colored] of its [color] and can be
+     * popped as part of any same-color match; when a match *pop* removes it, it detonates a
+     * shockwave that clears same-color groups seeded from every matchable bubble within hex
+     * radius 2, chaining through further supernovas.
+     */
+    data class Supernova(val color: BubbleColor) : Bubble
 }
 
 /** The color this bubble currently matches with, or null if it cannot participate in a match right now. */
 fun Bubble.matchableColor(): BubbleColor? = when (this) {
     is Bubble.Colored -> color
+    is Bubble.Supernova -> color
     is Bubble.Fog -> if (revealed) color else null
     is Bubble.Stone, is Bubble.Ice, is Bubble.Chained -> null
 }

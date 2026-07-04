@@ -208,19 +208,25 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
 
             val match = MatchFinder.findMatch(grid, cell, placedColor)
             if (match.size >= 3) {
-                grid = grid.without(match)
+                // A match pop that removes supernovae detonates a chained shockwave; without any
+                // supernova, `removed` is exactly the match and behavior is unchanged.
+                val nova = expandSupernovae(grid, match)
+                grid = grid.without(nova.removed)
                 didPop = true
                 combo += 1
-                val gained = award(state, scoring.popScore(match.size, combo, feverOn))
+                val gained = award(state, scoring.popScore(nova.removed.size, combo, feverOn))
                 score += gained
-                events.add(GameEvent.Popped(match, placedColor, gained))
-                feverMeter += config.feverGainPerPop + match.size * config.feverGainPerBubble
+                events.add(GameEvent.Popped(nova.removed, placedColor, gained))
+                if (nova.origins.isNotEmpty()) {
+                    events.add(GameEvent.SupernovaChained(nova.origins, nova.removed, nova.waves))
+                }
+                feverMeter += config.feverGainPerPop + nova.removed.size * config.feverGainPerBubble
                 if (bounces > 0) {
                     val bonus = award(state, scoring.bankBonus(bounces))
                     score += bonus
                     events.add(GameEvent.BankShot(bounces, bonus))
                 }
-                poppedForObstacles = match
+                poppedForObstacles = nova.removed
             } else {
                 combo = 0
                 events.add(GameEvent.ComboBroken)
@@ -266,12 +272,16 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             is GameMode.Level -> descentSteps += levelDescent(state.mode.spec, state.shotsFired, events)
             is GameMode.Daily -> descentSteps += levelDescent(state.mode.spec, state.shotsFired, events)
             is GameMode.Endless -> {
-                val everyN = if (Mutator.FASTER_DESCENT in state.mode.mutators) {
-                    config.endlessRowEveryShotsFast
+                // Descent is opt-in: only the FASTER_DESCENT mutator inserts rows on a shot
+                // cadence (the pressure players trade for its score multiplier). Without it,
+                // endless just refills a row whenever the board runs low so play never dries up.
+                val descentOn = Mutator.FASTER_DESCENT in state.mode.mutators
+                val insert = if (descentOn) {
+                    state.shotsFired % config.endlessRowEveryShots == 0
                 } else {
-                    config.endlessRowEveryShots
+                    grid.cells.size < config.endlessRefillThreshold
                 }
-                if (state.shotsFired % everyN == 0) {
+                if (insert) {
                     grid = insertEndlessRow(state.mode, grid, rng)
                     events.add(GameEvent.RowInserted)
                 }
@@ -420,7 +430,50 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         is Bubble.Ice -> bubble.color
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
+        is Bubble.Supernova -> bubble.color
         Bubble.Stone -> null
+    }
+
+    // --- supernova shockwave ---------------------------------------------------------------------
+
+    /** The full set of cells a shockwave clears, the supernovae that fired, and the chain depth. */
+    private class NovaResult(val removed: Set<GridPos>, val origins: Set<GridPos>, val waves: Int)
+
+    /**
+     * Expands a match pop [seed] on [grid] through any supernovae it removes. Each detonating
+     * supernova sweeps every occupied cell within hex radius 2 and, from each matchable one, floods
+     * its whole same-color group (any size) into the removal; supernovae caught this way chain,
+     * each detonating at most once. Non-matchable obstacles in the radius are left in place.
+     */
+    private fun expandSupernovae(grid: BubbleGrid, seed: Set<GridPos>): NovaResult {
+        val removed = LinkedHashSet(seed)
+        val queue = java.util.ArrayDeque<GridPos>()
+        for (pos in seed) if (grid.bubbleAt(pos) is Bubble.Supernova) queue.add(pos)
+        if (queue.isEmpty()) return NovaResult(removed, emptySet(), 0)
+
+        val detonated = LinkedHashSet<GridPos>()
+        var waves = 0
+        while (queue.isNotEmpty()) {
+            val generation = queue.size
+            var firedThisWave = false
+            repeat(generation) {
+                val origin = queue.poll()
+                if (origin in detonated || grid.bubbleAt(origin) !is Bubble.Supernova) return@repeat
+                detonated.add(origin)
+                firedThisWave = true
+                for (target in grid.cells.keys) {
+                    if (hexDistance(origin, target) > 2) continue
+                    val color = grid.bubbleAt(target)?.matchableColor() ?: continue
+                    for (member in MatchFinder.findMatch(grid, target, color)) {
+                        if (removed.add(member) && grid.bubbleAt(member) is Bubble.Supernova) {
+                            queue.add(member)
+                        }
+                    }
+                }
+            }
+            if (firedThisWave) waves++
+        }
+        return NovaResult(removed, detonated, waves)
     }
 
     /** Hex grid-distance between two odd-r offset cells, via cube coordinates. */

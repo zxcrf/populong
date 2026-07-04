@@ -9,6 +9,10 @@ data class GameConfig(
     val projectileSpeed: Float = 60f,
     val aimBouncesNormal: Int = 1,
     val aimBouncesPrecision: Int = 3,
+    // Maximum visible length of the aim guide, in unit-radius space. Default is unbounded, so the
+    // preview always reaches its landing; per-level/endless caps come from
+    // [com.populong.bubbleshooter.core.level.AimGuide].
+    val aimLength: Float = Float.MAX_VALUE,
     val maxRows: Int = 12,
     // = maxRows(12) * ROW_HEIGHT + 1 (ROW_HEIGHT = 1.7320508f); data class defaults can't
     // reference other params, so the shipping default is hardcoded numerically here. Keep this
@@ -27,4 +31,6 @@ data class GameConfig(
     val clearBonusPerRemainingShot: Long = 100L,
     val endlessRowEveryShots: Int = 6,
     val endlessRowEveryShotsFast: Int = 4,
+    /** Endless without descent refills a row once the board drops below this many bubbles. */
+    val endlessRefillThreshold: Int = 18,
 )

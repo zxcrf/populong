@@ -51,10 +51,14 @@ data class GameState(
     val shooterOrigin: Vec2
         get() = Vec2(grid.evenCols.toFloat(), ceilingY + config.shooterDistance)
 
-    /** The current aim preview, or null when no valid aim is set. */
+    /**
+     * The current aim preview, or null when no valid aim is set. Precision aim previews more wall
+     * reflections and, as a skill reward, extends the visible guide length by 50%.
+     */
     fun aimResult(): AimResult? {
         val dir = aimDir ?: return null
         val bounces = if (precision) config.aimBouncesPrecision else config.aimBouncesNormal
-        return AimPath.compute(grid, ceilingY, shooterOrigin, dir, bounces)
+        val maxLength = config.aimLength * (if (precision) 1.5f else 1f)
+        return AimPath.compute(grid, ceilingY, shooterOrigin, dir, bounces, maxLength)
     }
 }

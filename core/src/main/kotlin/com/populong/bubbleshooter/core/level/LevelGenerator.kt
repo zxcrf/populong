@@ -48,6 +48,7 @@ object LevelGenerator {
         for (pos in kept) bubbles[pos] = Bubble.Colored(colorOf.getValue(pos))
         sprinkleObstacles(bubbles, p, rng)
         ensureFinalColorFloor(bubbles, colors, rng)
+        sprinkleSupernovae(bubbles, p, rng)
 
         // 4. budget + scoring, derived from the count of bubbles that must actually be cleared.
         val clearable = bubbles.values.count { it !is Bubble.Stone }
@@ -240,6 +241,7 @@ object LevelGenerator {
         is Bubble.Ice -> bubble.color
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
+        is Bubble.Supernova -> bubble.color
         Bubble.Stone -> null
     }
 
@@ -317,6 +319,43 @@ object LevelGenerator {
         return n
     }
 
+    // --- supernovae ------------------------------------------------------------------------------
+
+    /**
+     * Promotes up to [SUPERNOVA_CAP] plain colored cells to [Bubble.Supernova] of the same color.
+     * Each eligible cell is admitted with probability [GenParams.supernovaDensity]; a cell is eligible
+     * only if it is still a plain [Bubble.Colored] and has at least one same-color matchable neighbor,
+     * so every planted supernova can actually be reached and detonated by a like-colored match. When
+     * [GenParams.supernovaDensity] is 0 (levels below [SUPERNOVA_GATE]) this consumes no RNG and leaves
+     * the grid — and the downstream RNG stream — byte-for-byte unchanged.
+     */
+    private fun sprinkleSupernovae(bubbles: HashMap<GridPos, Bubble>, p: GenParams, rng: Rng) {
+        if (p.supernovaDensity <= 0f) return
+        val order = bubbles.keys.sortedBy { it.packed }.toMutableList()
+        shuffle(order, rng)
+        var placed = 0
+        for (pos in order) {
+            if (placed >= SUPERNOVA_CAP) break
+            val color = (bubbles[pos] as? Bubble.Colored)?.color ?: continue
+            if (!hasSameColorNeighbor(bubbles, pos, color)) continue
+            if (rng.nextFloat() >= p.supernovaDensity) continue
+            bubbles[pos] = Bubble.Supernova(color)
+            placed++
+        }
+    }
+
+    /** Whether [pos] has a neighbor that would match [color] this turn (plain colored or a supernova). */
+    private fun hasSameColorNeighbor(bubbles: Map<GridPos, Bubble>, pos: GridPos, color: BubbleColor): Boolean {
+        for (nb in neighborsOf(pos)) {
+            when (val b = bubbles[nb]) {
+                is Bubble.Colored -> if (b.color == color) return true
+                is Bubble.Supernova -> if (b.color == color) return true
+                else -> Unit
+            }
+        }
+        return false
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
 
     /** Fisher–Yates over [list] driven by [rng], for deterministic ordering. */
@@ -341,6 +380,9 @@ object LevelGenerator {
     }
 
     private const val MIN_PER_COLOR = 3
+
+    /** At most this many supernovae are planted in any generated level. */
+    private const val SUPERNOVA_CAP = 2
 
     private val ANCHOR_PROBE = Bubble.Colored(BubbleColor.RED)
 

@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,6 +64,7 @@ import com.populong.bubbleshooter.core.engine.GameConfig
 import com.populong.bubbleshooter.core.engine.GameInput
 import com.populong.bubbleshooter.core.engine.Phase
 import com.populong.bubbleshooter.core.grid.Vec2
+import com.populong.bubbleshooter.core.level.AimGuide
 import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.mode.Mutator
@@ -76,6 +78,7 @@ import com.populong.bubbleshooter.render.BackgroundRenderer
 import com.populong.bubbleshooter.render.BubbleSprites
 import com.populong.bubbleshooter.render.FieldLayout
 import com.populong.bubbleshooter.render.GameRenderer
+import com.populong.bubbleshooter.ui.theme.GalaxyTheme
 import com.populong.bubbleshooter.ui.theme.Neon
 import com.populong.bubbleshooter.ui.theme.NeonPanel
 import java.util.Locale
@@ -105,10 +108,19 @@ private fun evenColsOf(mode: GameMode): Int = when (mode) {
 fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNext: (() -> Unit)? = null) {
     var restartKey by remember(mode) { mutableStateOf(0) }
 
+    // Per-galaxy visual identity: Level uses the palette of the galaxy containing its level id;
+    // Daily/Endless use fixed palettes (index 3 = aurora green, index 5 = ice blue deep space) so
+    // those modes read as consistent, distinct identities rather than cycling with level progress.
+    val palette = when (mode) {
+        is GameMode.Level -> GalaxyTheme.forLevel(mode.spec.id)
+        is GameMode.Daily -> GalaxyTheme.palettes[3]
+        is GameMode.Endless -> GalaxyTheme.palettes[5]
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF060B1E)),
+            .background(Brush.verticalGradient(listOf(palette.bgTop, palette.bgMid, palette.bgDeep))),
     ) {
         val density = LocalDensity.current
         val evenCols = evenColsOf(mode)
@@ -140,7 +152,14 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
                 is GameMode.Daily -> mode.spec.id.toLong()
                 is GameMode.Endless -> 20260704L
             }
-            val config = GameConfig(shooterDistance = shooterDistance)
+            val aimLength = when (mode) {
+                is GameMode.Level -> AimGuide.lengthForLevel(mode.spec.id)
+                // Fixed mid-difficulty guide length: the daily challenge doesn't sit on the
+                // campaign's 1..2000 curve, so there's no natural level id to derive a length from.
+                is GameMode.Daily -> AimGuide.lengthForLevel(60)
+                is GameMode.Endless -> AimGuide.lengthForEndless(mode.mutators)
+            }
+            val config = GameConfig(shooterDistance = shooterDistance, aimLength = aimLength)
             val holder = GameSessionHolder(mode, seed, container.sfx, container.haptics, config)
             holder.onGameEnd = { won, score, stars ->
                 container.save.update { saved ->
@@ -213,9 +232,10 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
                 .fillMaxSize()
                 .pointerInput(session, scale, ceilingScreenY) {
                     fun screenToWorld(pos: Offset): Vec2 {
+                        // The ceiling plane is glued to ceilingScreenY: unit y = ceilingY maps
+                        // there, and everything else is relative to it (matches FieldLayout.toPx).
                         val ceilingY = session.latestState.ceilingY
-                        val offsetY = ceilingScreenY - ceilingY * scale
-                        return Vec2(pos.x / scale, ceilingY + (pos.y - offsetY) / scale)
+                        return Vec2(pos.x / scale, ceilingY + (pos.y - ceilingScreenY) / scale)
                     }
 
                     awaitEachGesture {
@@ -262,11 +282,13 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
                 },
         ) {
             session.frameTick.longValue // sole render-invalidation read
-            BackgroundRenderer.draw(this, session.frameTick.longValue)
-            // The ceiling steps up over time in Endless mode; recompute its screen offset every
-            // frame from the live state so the ceiling stays glued to the HUD's bottom edge.
-            val ceilingYUnit = session.latestState.ceilingY
-            val layout = FieldLayout(scale = scale, offsetX = 0f, offsetY = ceilingScreenY - ceilingYUnit * scale)
+            BackgroundRenderer.draw(this, session.frameTick.longValue, palette, session.hud.feverActive)
+            // FieldLayout.toPx maps unit y relative to the LIVE ceiling plane (y - ceilingY), so
+            // offsetY is simply the ceiling's fixed screen position. Endless row insertions move
+            // ceilingY negative; bubbles then shift down while the ceiling stays glued to the HUD
+            // (passing ceilingScreenY - ceilingY*scale here would double-count the shift and sink
+            // the whole field — the bug seen on device).
+            val layout = FieldLayout(scale = scale, offsetX = 0f, offsetY = ceilingScreenY)
             GameRenderer.draw(this, session, sprites, layout)
         }
 

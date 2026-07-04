@@ -39,6 +39,8 @@ class BubbleSprites(private val radiusPx: Float) {
         BubbleColor.all.associateWith { fogRevealedSprite(Neon.bubbleColor(it)) }
     private val chained: Map<BubbleColor, ImageBitmap> =
         BubbleColor.all.associateWith { chainedSprite(Neon.bubbleColor(it)) }
+    private val supernova: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { supernovaSprite(Neon.bubbleColor(it)) }
     private val stoneSprite: ImageBitmap = stoneSpriteImpl()
     private val fogUnrevealedSprite: ImageBitmap = fogUnrevealedSpriteImpl()
     private val bombSprite: ImageBitmap = bombSpriteImpl()
@@ -51,6 +53,7 @@ class BubbleSprites(private val radiusPx: Float) {
         is Bubble.Ice -> if (b.hitsLeft <= 1) iceCracked.getValue(b.color) else ice.getValue(b.color)
         is Bubble.Fog -> if (b.revealed) fogRevealed.getValue(b.color) else fogUnrevealedSprite
         is Bubble.Chained -> chained.getValue(b.color)
+        is Bubble.Supernova -> supernova.getValue(b.color)
     }
 
     /** The baked sprite for a loaded/in-flight ammo [a]. */
@@ -247,6 +250,49 @@ class BubbleSprites(private val radiusPx: Float) {
                 style = Stroke(width = max(1f, radiusPx * 0.05f)),
             )
         }
+    }
+
+    /** A radiant star orb: bright core, base-color body, soft halo, and a 4-point diffraction-spike
+     * cross (the thin bright horizontal/vertical lines a camera lens shows around a very bright
+     * point light) to read distinctly as "about to detonate" among the other sprite variants. */
+    private fun supernovaSprite(base: Color): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(lighten(base, 0.6f).copy(alpha = 0.5f), base.copy(alpha = 0f)),
+                center = c,
+                radius = radiusPx * 1.7f,
+            ),
+            radius = radiusPx * 1.7f,
+            center = c,
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.White, lighten(base, 0.3f), base, darken(base, 0.3f)),
+                center = c,
+                radius = radiusPx * 1.1f,
+            ),
+            radius = radiusPx,
+            center = c,
+        )
+        drawCircle(color = Color.White.copy(alpha = 0.9f), radius = radiusPx * 0.35f, center = c)
+        val spikeColor = Color.White.copy(alpha = 0.85f)
+        val spikeLen = radiusPx * 1.55f
+        val strokeW = max(1f, radiusPx * 0.08f)
+        drawLine(
+            color = spikeColor,
+            start = c - Offset(spikeLen, 0f),
+            end = c + Offset(spikeLen, 0f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = spikeColor,
+            start = c - Offset(0f, spikeLen),
+            end = c + Offset(0f, spikeLen),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round,
+        )
     }
 
     private fun bombSpriteImpl(): ImageBitmap = bake {

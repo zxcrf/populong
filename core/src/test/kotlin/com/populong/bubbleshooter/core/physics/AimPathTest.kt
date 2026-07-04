@@ -10,6 +10,7 @@ import com.populong.bubbleshooter.core.grid.Vec2
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AimPathTest {
@@ -97,5 +98,65 @@ class AimPathTest {
             }
         }
         assertTrue(checked >= 60, "expected a broad table of angles, got $checked")
+    }
+
+    // --- visible-length truncation ------------------------------------------------------------
+
+    private fun polylineLength(points: List<Vec2>): Float {
+        var total = 0f
+        for (i in 1 until points.size) total += (points[i] - points[i - 1]).length()
+        return total
+    }
+
+    @Test
+    fun `a preview whose cap exceeds the path length is identical to the uncapped preview`() {
+        // A full ceiling row so every angle lands quickly; giving a cap comfortably beyond the true
+        // path length must leave the result byte-for-byte identical to the uncapped computation.
+        val grid = BubbleGrid(
+            (0 until evenCols).associate { c -> GridPos(0, c) to Bubble.Colored(BubbleColor.RED) },
+            evenCols,
+            0,
+        )
+        var checked = 0
+        var k = -1.2f
+        while (k <= 1.2f) {
+            val dir = Vec2(k, -1f)
+            val uncapped = AimPath.compute(grid, ceilingY, origin, dir, maxBounces = 3)
+            val slack = polylineLength(uncapped.points) + 5f
+            val capped = AimPath.compute(grid, ceilingY, origin, dir, maxBounces = 3, maxLength = slack)
+            assertEquals(uncapped.landingCell, capped.landingCell, "landing differs at slope $k")
+            assertEquals(uncapped.bounces, capped.bounces, "bounces differ at slope $k")
+            assertEquals(uncapped.points, capped.points, "points differ at slope $k")
+            checked++
+            k += 0.2f
+        }
+        assertTrue(checked >= 10, "expected a table of angles, got $checked")
+    }
+
+    @Test
+    fun `a landing beyond the cap hides the ghost but keeps a truncated polyline within the cap`() {
+        // Straight up over an empty field: the ceiling is ~12 rows away, far past a 5-unit cap.
+        val grid = BubbleGrid(emptyMap(), evenCols, 0)
+        val cap = 5f
+        val result = AimPath.compute(grid, ceilingY, origin, Vec2(0f, -1f), maxBounces = 1, maxLength = cap)
+
+        assertNull(result.landingCell, "a landing past the cap must hide the ghost")
+        assertTrue(result.points.size >= 2, "the truncated polyline must keep its points")
+        assertTrue(polylineLength(result.points) <= cap + 1e-3f, "polyline overran the cap")
+    }
+
+    @Test
+    fun `the truncated polyline never exceeds the cap across a table of angles`() {
+        val grid = BubbleGrid(emptyMap(), evenCols, 0)
+        val cap = 6f
+        var checked = 0
+        var k = -1.5f
+        while (k <= 1.5f) {
+            val r = AimPath.compute(grid, ceilingY, origin, Vec2(k, -1f), maxBounces = 3, maxLength = cap)
+            assertTrue(polylineLength(r.points) <= cap + 1e-3f, "cap exceeded at slope $k")
+            checked++
+            k += 0.15f
+        }
+        assertTrue(checked >= 15, "expected a table of angles, got $checked")
     }
 }

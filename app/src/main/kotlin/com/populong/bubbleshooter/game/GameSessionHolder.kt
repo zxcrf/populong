@@ -14,6 +14,8 @@ import com.populong.bubbleshooter.core.engine.GameEvent
 import com.populong.bubbleshooter.core.engine.GameInput
 import com.populong.bubbleshooter.core.engine.GameState
 import com.populong.bubbleshooter.core.engine.Phase
+import com.populong.bubbleshooter.core.grid.BubbleGrid
+import com.populong.bubbleshooter.core.grid.GridGeometry
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.physics.AimResult
 import com.populong.bubbleshooter.core.progress.CareerStats
@@ -135,19 +137,28 @@ class GameSessionHolder(
         var steps = 0
         while (accumulator >= tick && steps < MAX_STEPS_PER_FRAME) {
             drainInputsIntoEngine()
+            // Captured before the engine steps: events like Fell/BombExploded/SupernovaChained
+            // carry only the *positions* of cells that just left the grid, so turning them into
+            // falling-bubble actors needs the pre-step grid to look up what was actually sitting
+            // there (the post-step grid no longer has it).
+            val pre = latestState
             val result = engine.step(latestState)
             latestState = result.state
             trackCombo()
-            dispatch(result.events)
+            dispatch(result.events, pre.grid)
             accumulator -= tick
             steps++
         }
         if (steps == MAX_STEPS_PER_FRAME) accumulator = 0f
 
+        // Falling-actor reap line: field-bottom (lose line) + 4 units of margin, so debris falls
+        // fully off-screen before being culled rather than popping out at the visible edge.
+        effects.falling.killY = latestState.ceilingY + latestState.config.maxRows * GridGeometry.ROW_HEIGHT + 4f
+
         // Uses the timeScale-scaled dt (not raw wall-clock time), so particles/shake/popups slow
         // down together with the sim during precision-aim slow-mo — deliberate choice: slow-mo FX
         // reads as "cinematic" rather than "sluggish" for this kind of arcade aiming.
-        effects.update(dt)
+        effects.update(dt, fieldWidth = latestState.grid.evenCols * 2f)
 
         lastEvents = frameEvents.toList()
         refreshHudIfChanged()
@@ -157,10 +168,11 @@ class GameSessionHolder(
     private fun drainInputsIntoEngine() {
         while (pendingInputs.isNotEmpty()) {
             val input = pendingInputs.removeFirst()
+            val pre = latestState.grid
             val result = engine.handleInput(latestState, input)
             latestState = result.state
             trackCombo()
-            if (result.events.isNotEmpty()) dispatch(result.events)
+            if (result.events.isNotEmpty()) dispatch(result.events, pre)
         }
     }
 
@@ -173,10 +185,10 @@ class GameSessionHolder(
         if (snapshot != hud) hud = snapshot
     }
 
-    private fun dispatch(events: List<GameEvent>) {
+    private fun dispatch(events: List<GameEvent>, preGrid: BubbleGrid) {
         if (events.isEmpty()) return
         sessionStats = sessionStats.accumulate(events)
-        effects.onEvents(events, latestState.grid, latestState.feverActive)
+        effects.onEvents(events, preGrid, latestState.grid, latestState.feverActive)
         for (event in events) {
             when (event) {
                 GameEvent.Fired -> {
