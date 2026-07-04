@@ -15,6 +15,8 @@ import com.populong.bubbleshooter.core.engine.GameState
 import com.populong.bubbleshooter.core.engine.Phase
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.physics.AimResult
+import com.populong.bubbleshooter.core.progress.CareerStats
+import com.populong.bubbleshooter.core.progress.accumulate
 import com.populong.bubbleshooter.haptics.HapticsManager
 
 /**
@@ -87,6 +89,23 @@ class GameSessionHolder(
     var lastEvents: List<GameEvent> = emptyList()
         private set
 
+    /**
+     * Career-stat deltas accrued so far *this run only* (starts at all-zero, never merged with
+     * lifetime totals here). Folded into the saved lifetime [CareerStats] by the caller once the
+     * run ends; see [onGameEnd].
+     */
+    var sessionStats: CareerStats = CareerStats()
+        private set
+
+    /** The highest [GameState.combo] observed so far this run. */
+    var maxComboSeen: Int = 0
+        private set
+
+    /** Set by the caller; invoked exactly once, the first time this run reaches Won or Lost. */
+    var onGameEnd: ((won: Boolean, score: Long, stars: Int) -> Unit)? = null
+
+    private var gameEndReported = false
+
     /** Queues a player [input]; applied at the start of the next simulated tick. */
     fun enqueue(input: GameInput) {
         pendingInputs.addLast(input)
@@ -112,6 +131,7 @@ class GameSessionHolder(
             drainInputsIntoEngine()
             val result = engine.step(latestState)
             latestState = result.state
+            trackCombo()
             dispatch(result.events)
             accumulator -= tick
             steps++
@@ -128,8 +148,13 @@ class GameSessionHolder(
             val input = pendingInputs.removeFirst()
             val result = engine.handleInput(latestState, input)
             latestState = result.state
+            trackCombo()
             if (result.events.isNotEmpty()) dispatch(result.events)
         }
+    }
+
+    private fun trackCombo() {
+        if (latestState.combo > maxComboSeen) maxComboSeen = latestState.combo
     }
 
     private fun refreshHudIfChanged() {
@@ -139,6 +164,7 @@ class GameSessionHolder(
 
     private fun dispatch(events: List<GameEvent>) {
         if (events.isEmpty()) return
+        sessionStats = sessionStats.accumulate(events)
         for (event in events) {
             when (event) {
                 GameEvent.Fired -> {
@@ -177,13 +203,24 @@ class GameSessionHolder(
                     finalStars = event.stars
                     sfx.play(Sfx.WIN)
                     haptics.heavy()
+                    reportGameEndOnce(won = true, score = event.finalScore, stars = event.stars)
                 }
 
-                is GameEvent.Lost -> sfx.play(Sfx.LOSE)
+                is GameEvent.Lost -> {
+                    sfx.play(Sfx.LOSE)
+                    reportGameEndOnce(won = false, score = event.finalScore, stars = 0)
+                }
             }
         }
         frameEvents.addAll(events)
         while (frameEvents.size > MAX_EVENTS) frameEvents.removeAt(0)
+    }
+
+    /** Invokes [onGameEnd] with the run's outcome, but only the first time this is called. */
+    private fun reportGameEndOnce(won: Boolean, score: Long, stars: Int) {
+        if (gameEndReported) return
+        gameEndReported = true
+        onGameEnd?.invoke(won, score, stars)
     }
 }
 

@@ -45,7 +45,14 @@ import com.populong.bubbleshooter.audio.Sfx
 import com.populong.bubbleshooter.core.engine.GameInput
 import com.populong.bubbleshooter.core.engine.Phase
 import com.populong.bubbleshooter.core.grid.Vec2
+import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
+import com.populong.bubbleshooter.core.progress.Achievements
+import com.populong.bubbleshooter.core.progress.CareerStats
+import com.populong.bubbleshooter.core.progress.withDailyCompleted
+import com.populong.bubbleshooter.core.progress.withEndlessScore
+import com.populong.bubbleshooter.core.progress.withLevelResult
+import com.populong.bubbleshooter.core.progress.withRun
 import com.populong.bubbleshooter.render.BackgroundRenderer
 import com.populong.bubbleshooter.render.BubbleSprites
 import com.populong.bubbleshooter.render.FieldLayout
@@ -69,7 +76,7 @@ private const val MIN_AIM_ANGLE_CHANGE_RAD = 0.008727f
  * pause, and result overlays on top.
  */
 @Composable
-fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit) {
+fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNext: (() -> Unit)? = null) {
     var restartKey by remember(mode) { mutableStateOf(0) }
     val session = remember(mode, restartKey) {
         val seed = when (mode) {
@@ -77,7 +84,36 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit) {
             is GameMode.Daily -> mode.spec.id.toLong()
             is GameMode.Endless -> 20260704L
         }
-        GameSessionHolder(mode, seed, container.sfx, container.haptics)
+        val holder = GameSessionHolder(mode, seed, container.sfx, container.haptics)
+        holder.onGameEnd = { won, score, stars ->
+            container.save.update { saved ->
+                var updated = saved
+                when (mode) {
+                    is GameMode.Level -> if (won) {
+                        updated = updated.withLevelResult(mode.spec.id, stars, score)
+                    }
+
+                    is GameMode.Endless -> if (!won) {
+                        updated = updated.withEndlessScore(score, mode.mutators, currentEpochDay())
+                    }
+
+                    is GameMode.Daily -> if (won) {
+                        updated = updated.withDailyCompleted(currentEpochDay())
+                    }
+                }
+
+                val mergedStats = updated.stats
+                    .plusSessionDeltas(holder.sessionStats)
+                    .withRun(holder.maxComboSeen, score)
+                var finalSave = updated.copy(stats = mergedStats)
+                val newlyEarned = Achievements.evaluate(finalSave)
+                if (newlyEarned.isNotEmpty()) {
+                    finalSave = finalSave.copy(achievements = finalSave.achievements + newlyEarned)
+                }
+                finalSave
+            }
+        }
+        holder
     }
 
     var paused by remember(session) { mutableStateOf(false) }
@@ -273,9 +309,11 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit) {
         if (session.hud.phase == Phase.WON || session.hud.phase == Phase.LOST) {
             ResultOverlay(
                 session = session,
+                mode = mode,
                 container = container,
                 onRetry = { restartKey++ },
                 onExit = onExit,
+                onNext = onNext,
             )
         }
     }
@@ -327,11 +365,14 @@ private fun PauseOverlay(
 @Composable
 private fun ResultOverlay(
     session: GameSessionHolder,
+    mode: GameMode,
     container: AppContainer,
     onRetry: () -> Unit,
     onExit: () -> Unit,
+    onNext: (() -> Unit)?,
 ) {
     val won = session.hud.phase == Phase.WON
+    val showNext = won && onNext != null && mode is GameMode.Level && mode.spec.id < LevelCatalog.TOTAL
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -362,6 +403,13 @@ private fun ResultOverlay(
                 }
                 Text(text = "分数 ${session.hud.score}", color = Neon.textPrimary, fontSize = 18.sp)
                 Spacer(modifier = Modifier.height(16.dp))
+                if (showNext) {
+                    MenuButton("下一关") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        onNext?.invoke()
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 MenuButton("重试") {
                     container.sfx.play(Sfx.UI_TAP)
                     onRetry()
@@ -375,6 +423,24 @@ private fun ResultOverlay(
         }
     }
 }
+
+/** Adds a run's session-scoped delta counters into lifetime totals, field by field. Career maxima
+ * ([CareerStats.maxCombo]) and per-run totals ([CareerStats.totalScore],
+ * [CareerStats.levelsCompleted], [CareerStats.threeStarLevels]) are intentionally excluded here —
+ * those are folded in separately via [withRun]/[withLevelResult]. */
+private fun CareerStats.plusSessionDeltas(delta: CareerStats): CareerStats = copy(
+    shotsFired = shotsFired + delta.shotsFired,
+    shotsPopped = shotsPopped + delta.shotsPopped,
+    bubblesPopped = bubblesPopped + delta.bubblesPopped,
+    bubblesDropped = bubblesDropped + delta.bubblesDropped,
+    bankShots = bankShots + delta.bankShots,
+    bombsDetonated = bombsDetonated + delta.bombsDetonated,
+    feversTriggered = feversTriggered + delta.feversTriggered,
+)
+
+/** The current UTC day number (days since the Unix epoch), matching [DailyLevel.forEpochDay]'s
+ * day boundary and the epoch-day keys stored in [com.populong.bubbleshooter.core.progress.SaveData]. */
+private fun currentEpochDay(): Long = System.currentTimeMillis() / 86_400_000L
 
 @Composable
 private fun MenuButton(label: String, onClick: () -> Unit) {

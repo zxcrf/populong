@@ -19,11 +19,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -34,8 +34,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.populong.bubbleshooter.AppContainer
 import com.populong.bubbleshooter.audio.Sfx
-import com.populong.bubbleshooter.core.level.LevelCatalog
-import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.ui.theme.Neon
 import com.populong.bubbleshooter.ui.theme.NeonPanel
 import kotlin.math.sin
@@ -49,11 +47,20 @@ private const val TWO_PI = 6.2831855f
 
 /**
  * The deep-space main menu: glowing title, a twinkling starfield, and mode-select panels.
- * The galaxy map for level selection lands in a later phase; for now「关卡模式」jumps straight
- * into level 1.
+ * 「关卡模式」opens the galaxy map, 「无尽模式」opens its mutator setup, and 「每日挑战」opens
+ * the daily-challenge screen; each mode's [AppContainer.save] state (stars, streak) is reflected
+ * directly on this screen.
  */
 @Composable
-fun MainMenuScreen(container: AppContainer, onPlay: (GameMode) -> Unit) {
+fun MainMenuScreen(
+    container: AppContainer,
+    onPlayLevel: () -> Unit,
+    onPlayEndless: () -> Unit,
+    onPlayDaily: () -> Unit,
+) {
+    val save by container.save.save.collectAsState()
+    val totalStars = remember(save) { save.levels.values.sumOf { it.stars } }
+
     val stars = remember {
         val rng = Random(20260704L)
         List(STAR_COUNT) {
@@ -74,10 +81,10 @@ fun MainMenuScreen(container: AppContainer, onPlay: (GameMode) -> Unit) {
         label = "twinkle-phase",
     )
 
-    fun playAndGo(mode: GameMode) {
+    fun playAndGo(action: () -> Unit) {
         container.sfx.play(Sfx.UI_TAP)
         container.haptics.tick()
-        onPlay(mode)
+        action()
     }
 
     Box(
@@ -116,12 +123,19 @@ fun MainMenuScreen(container: AppContainer, onPlay: (GameMode) -> Unit) {
                 color = Neon.textDim,
                 fontSize = 16.sp,
             )
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "★ $totalStars",
+                color = Neon.gold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(36.dp))
 
             NeonPanel(
                 modifier = Modifier
                     .width(240.dp)
-                    .clickable { playAndGo(GameMode.Level(LevelCatalog.spec(1))) },
+                    .clickable { playAndGo(onPlayLevel) },
             ) {
                 Text(
                     text = "关卡模式",
@@ -138,7 +152,7 @@ fun MainMenuScreen(container: AppContainer, onPlay: (GameMode) -> Unit) {
             NeonPanel(
                 modifier = Modifier
                     .width(240.dp)
-                    .clickable { playAndGo(GameMode.Endless(emptySet())) },
+                    .clickable { playAndGo(onPlayEndless) },
             ) {
                 Text(
                     text = "无尽模式",
@@ -155,14 +169,24 @@ fun MainMenuScreen(container: AppContainer, onPlay: (GameMode) -> Unit) {
             NeonPanel(
                 modifier = Modifier
                     .width(240.dp)
-                    .alpha(0.5f),
+                    .clickable { playAndGo(onPlayDaily) },
             ) {
                 Text(
-                    text = "每日挑战 · 敬请期待",
-                    color = Neon.textDim,
-                    fontSize = 14.sp,
+                    text = "每日挑战",
+                    color = Neon.textPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,
+                )
+            }
+
+            if (save.daily.streak > 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "连续 ${save.daily.streak} 天",
+                    color = Neon.gold,
+                    fontSize = 13.sp,
                 )
             }
         }

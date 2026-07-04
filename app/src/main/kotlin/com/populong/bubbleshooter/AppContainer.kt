@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import com.populong.bubbleshooter.audio.SfxPlayer
+import com.populong.bubbleshooter.data.SaveRepository
 import com.populong.bubbleshooter.haptics.HapticsManager
 
 /**
@@ -26,6 +27,9 @@ class AppContainer(context: Context) {
 
     /** The platform haptics wrapper, gated by [hapticsEnabled]. */
     val haptics: HapticsManager = HapticsManager(context.applicationContext, enabled = { hapticsEnabled.value })
+
+    /** Persisted player progress (levels, endless highs, achievements, streaks, career stats). */
+    val save: SaveRepository = SaveRepository(context.applicationContext)
 
     /** Releases underlying platform resources (audio tracks). Safe to call multiple times. */
     fun release() {

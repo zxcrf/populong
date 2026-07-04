@@ -7,8 +7,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.populong.bubbleshooter.AppContainer
+import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.game.GameScreen
+import com.populong.bubbleshooter.ui.menu.DailyScreen
+import com.populong.bubbleshooter.ui.menu.EndlessSetupScreen
+import com.populong.bubbleshooter.ui.menu.GalaxyMapScreen
 import com.populong.bubbleshooter.ui.menu.MainMenuScreen
 
 /** Top-level navigation state: which screen is currently shown. */
@@ -16,14 +20,23 @@ sealed interface Screen {
     /** The main menu / home screen. */
     data object Menu : Screen
 
-    /** An active game run in [mode]. */
-    data class Game(val mode: GameMode) : Screen
+    /** The constellation level map, reached from Menu's「关卡模式」row. */
+    data object GalaxyMap : Screen
+
+    /** Daily-challenge streak/calendar screen, reached from Menu's「每日挑战」row. */
+    data object DailySetup : Screen
+
+    /** Endless-mode mutator picker, reached from Menu's「无尽模式」row. */
+    data object EndlessSetup : Screen
+
+    /** An active game run in [mode]; [origin] is the screen to return to on exit. */
+    data class Game(val mode: GameMode, val origin: Screen) : Screen
 }
 
 /**
  * The app's root composable. Owns screen-level navigation state and crossfades between the
- * main menu and an active game. [container] carries the process-lifetime services (sound,
- * haptics) shared by every screen.
+ * main menu, the mode-setup screens, and an active game. [container] carries the process-lifetime
+ * services (sound, haptics, save data) shared by every screen.
  */
 @Composable
 fun App(container: AppContainer) {
@@ -33,14 +46,52 @@ fun App(container: AppContainer) {
         when (current) {
             is Screen.Menu -> MainMenuScreen(
                 container = container,
-                onPlay = { mode -> screen = Screen.Game(mode) },
+                onPlayLevel = { screen = Screen.GalaxyMap },
+                onPlayEndless = { screen = Screen.EndlessSetup },
+                onPlayDaily = { screen = Screen.DailySetup },
             )
 
-            is Screen.Game -> GameScreen(
-                mode = current.mode,
+            is Screen.GalaxyMap -> GalaxyMapScreen(
                 container = container,
-                onExit = { screen = Screen.Menu },
+                onPick = { level ->
+                    screen = Screen.Game(GameMode.Level(LevelCatalog.spec(level)), origin = Screen.GalaxyMap)
+                },
+                onBack = { screen = Screen.Menu },
             )
+
+            is Screen.EndlessSetup -> EndlessSetupScreen(
+                container = container,
+                onStart = { mutators ->
+                    screen = Screen.Game(GameMode.Endless(mutators), origin = Screen.EndlessSetup)
+                },
+                onBack = { screen = Screen.Menu },
+            )
+
+            is Screen.DailySetup -> DailyScreen(
+                container = container,
+                onStart = { mode -> screen = Screen.Game(mode, origin = Screen.DailySetup) },
+                onBack = { screen = Screen.Menu },
+            )
+
+            is Screen.Game -> {
+                val mode = current.mode
+                val onNext: (() -> Unit)? = if (mode is GameMode.Level && mode.spec.id < LevelCatalog.TOTAL) {
+                    {
+                        screen = Screen.Game(
+                            mode = GameMode.Level(LevelCatalog.spec(mode.spec.id + 1)),
+                            origin = current.origin,
+                        )
+                    }
+                } else {
+                    null
+                }
+                GameScreen(
+                    mode = mode,
+                    container = container,
+                    onExit = { screen = current.origin },
+                    onNext = onNext,
+                )
+            }
         }
     }
 }
