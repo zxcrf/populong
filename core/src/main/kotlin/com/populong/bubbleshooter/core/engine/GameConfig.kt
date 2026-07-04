@@ -10,6 +10,10 @@ data class GameConfig(
     val aimBouncesNormal: Int = 1,
     val aimBouncesPrecision: Int = 3,
     val maxRows: Int = 12,
+    // = maxRows(12) * ROW_HEIGHT + 1 (ROW_HEIGHT = 1.7320508f); data class defaults can't
+    // reference other params, so the shipping default is hardcoded numerically here. Keep this
+    // in sync with maxRows's default if that ever changes.
+    val shooterDistance: Float = 21.784609f,
     val bombRadius: Int = 2,
     val popBase: Long = 10L,
     val fallBase: Long = 20L,

@@ -49,7 +49,7 @@ data class GameState(
 
     /** The shooter's fixed muzzle position at the bottom-center of the playfield. */
     val shooterOrigin: Vec2
-        get() = Vec2(grid.evenCols.toFloat(), ceilingY + config.maxRows * GridGeometry.ROW_HEIGHT + 1f)
+        get() = Vec2(grid.evenCols.toFloat(), ceilingY + config.shooterDistance)
 
     /** The current aim preview, or null when no valid aim is set. */
     fun aimResult(): AimResult? {

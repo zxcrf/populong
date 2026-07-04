@@ -1,9 +1,12 @@
 package com.populong.bubbleshooter.game
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -12,12 +15,21 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -39,17 +52,20 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.populong.bubbleshooter.AppContainer
 import com.populong.bubbleshooter.audio.Sfx
+import com.populong.bubbleshooter.core.engine.GameConfig
 import com.populong.bubbleshooter.core.engine.GameInput
 import com.populong.bubbleshooter.core.engine.Phase
 import com.populong.bubbleshooter.core.grid.Vec2
 import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
+import com.populong.bubbleshooter.core.mode.Mutator
 import com.populong.bubbleshooter.core.progress.Achievements
 import com.populong.bubbleshooter.core.progress.CareerStats
 import com.populong.bubbleshooter.core.progress.withDailyCompleted
@@ -62,16 +78,23 @@ import com.populong.bubbleshooter.render.FieldLayout
 import com.populong.bubbleshooter.render.GameRenderer
 import com.populong.bubbleshooter.ui.theme.Neon
 import com.populong.bubbleshooter.ui.theme.NeonPanel
+import java.util.Locale
 import kotlin.math.acos
+import kotlin.math.roundToInt
 import kotlinx.coroutines.isActive
 
-private const val SHOOTER_RADIUS_DP = 48
-private const val MOVEMENT_THRESHOLD_DP = 10
-private const val TAP_TIME_MS = 200L
 private const val PRECISION_HOLD_MS = 350L
 
 /** ~0.5 degrees, in radians; the minimum aim-direction change before re-enqueuing [GameInput.AimAt]. */
 private const val MIN_AIM_ANGLE_CHANGE_RAD = 0.008727f
+
+/** The field width (in evenCols) for [mode], mirroring [com.populong.bubbleshooter.core.engine.GameEngine]'s
+ * own grid-building logic — needed up front (before a session/engine exists) to size the playfield. */
+private fun evenColsOf(mode: GameMode): Int = when (mode) {
+    is GameMode.Level -> mode.spec.evenCols
+    is GameMode.Daily -> mode.spec.evenCols
+    is GameMode.Endless -> if (Mutator.NARROW_FIELD in mode.mutators) 7 else 8
+}
 
 /**
  * The active-game screen: owns a [GameSessionHolder] for [mode], drives its fixed-timestep loop
@@ -81,68 +104,6 @@ private const val MIN_AIM_ANGLE_CHANGE_RAD = 0.008727f
 @Composable
 fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNext: (() -> Unit)? = null) {
     var restartKey by remember(mode) { mutableStateOf(0) }
-    val session = remember(mode, restartKey) {
-        val seed = when (mode) {
-            is GameMode.Level -> mode.spec.id.toLong()
-            is GameMode.Daily -> mode.spec.id.toLong()
-            is GameMode.Endless -> 20260704L
-        }
-        val holder = GameSessionHolder(mode, seed, container.sfx, container.haptics)
-        holder.onGameEnd = { won, score, stars ->
-            container.save.update { saved ->
-                var updated = saved
-                when (mode) {
-                    is GameMode.Level -> if (won) {
-                        updated = updated.withLevelResult(mode.spec.id, stars, score)
-                    }
-
-                    is GameMode.Endless -> if (!won) {
-                        updated = updated.withEndlessScore(score, mode.mutators, currentEpochDay())
-                    }
-
-                    is GameMode.Daily -> if (won) {
-                        updated = updated.withDailyCompleted(currentEpochDay())
-                    }
-                }
-
-                val mergedStats = updated.stats
-                    .plusSessionDeltas(holder.sessionStats)
-                    .withRun(holder.maxComboSeen, score)
-                var finalSave = updated.copy(stats = mergedStats)
-                val newlyEarned = Achievements.evaluate(finalSave)
-                if (newlyEarned.isNotEmpty()) {
-                    finalSave = finalSave.copy(achievements = finalSave.achievements + newlyEarned)
-                }
-                finalSave
-            }
-        }
-        holder
-    }
-
-    var paused by remember(session) { mutableStateOf(false) }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) paused = true
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(session) {
-        var last = 0L
-        while (isActive) {
-            withFrameNanos { now ->
-                if (paused) {
-                    last = 0L
-                } else {
-                    if (last != 0L) session.advance(now - last)
-                    last = now
-                }
-            }
-        }
-    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -150,78 +111,150 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
             .background(Color(0xFF060B1E)),
     ) {
         val density = LocalDensity.current
-        val evenCols = session.latestState.grid.evenCols
+        val evenCols = evenColsOf(mode)
         val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
         val scale = widthPx / (2f * evenCols)
         val sprites = remember(scale) { BubbleSprites(radiusPx = scale) }
+        val iconSprites = remember(density) { BubbleSprites(radiusPx = with(density) { 14.dp.toPx() }) }
 
-        val shooterRadiusPx = with(density) { SHOOTER_RADIUS_DP.dp.toPx() }
-        val movementThresholdPx = with(density) { MOVEMENT_THRESHOLD_DP.dp.toPx() }
+        // Insets: content must never sit under the status bar (punch-hole/notch) or the gesture
+        // nav bar. hudBottomPx/shooterScreenY are computed by construction to match the HUD
+        // Column and swap-button overlay actually rendered below, so this is deterministic rather
+        // than measured.
+        val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val topInsetPx = with(density) { topInset.toPx() }
+        val bottomInsetPx = with(density) { bottomInset.toPx() }
+        val hudBottomPx = topInsetPx + with(density) { 56.dp.toPx() } // 48dp score/pause row + 8dp fever bar
+        val ceilingScreenY = hudBottomPx + with(density) { 8.dp.toPx() }
+        val shooterScreenY = heightPx - bottomInsetPx - with(density) { 76.dp.toPx() }
+
+        // Never place the shooter closer than the default (lose-line) distance.
+        val minShooterDistance = GameConfig().shooterDistance
+        val shooterDistance = ((shooterScreenY - ceilingScreenY) / scale - 1f).coerceAtLeast(minShooterDistance)
+
+        val session = remember(mode, restartKey, maxWidth, maxHeight) {
+            val seed = when (mode) {
+                is GameMode.Level -> mode.spec.id.toLong()
+                is GameMode.Daily -> mode.spec.id.toLong()
+                is GameMode.Endless -> 20260704L
+            }
+            val config = GameConfig(shooterDistance = shooterDistance)
+            val holder = GameSessionHolder(mode, seed, container.sfx, container.haptics, config)
+            holder.onGameEnd = { won, score, stars ->
+                container.save.update { saved ->
+                    var updated = saved
+                    when (mode) {
+                        is GameMode.Level -> if (won) {
+                            updated = updated.withLevelResult(mode.spec.id, stars, score)
+                        }
+
+                        is GameMode.Endless -> if (!won) {
+                            updated = updated.withEndlessScore(score, mode.mutators, currentEpochDay())
+                        }
+
+                        is GameMode.Daily -> if (won) {
+                            updated = updated.withDailyCompleted(currentEpochDay())
+                        }
+                    }
+
+                    val mergedStats = updated.stats
+                        .plusSessionDeltas(holder.sessionStats)
+                        .withRun(holder.maxComboSeen, score)
+                    var finalSave = updated.copy(stats = mergedStats)
+                    val newlyEarned = Achievements.evaluate(finalSave)
+                    if (newlyEarned.isNotEmpty()) {
+                        finalSave = finalSave.copy(achievements = finalSave.achievements + newlyEarned)
+                    }
+                    finalSave
+                }
+            }
+            holder
+        }
+
+        var paused by remember(session) { mutableStateOf(false) }
+
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) paused = true
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        LaunchedEffect(session) {
+            var last = 0L
+            while (isActive) {
+                withFrameNanos { now ->
+                    if (paused) {
+                        last = 0L
+                    } else {
+                        if (last != 0L) session.advance(now - last)
+                        last = now
+                    }
+                }
+            }
+        }
+
+        // Routes both the system back gesture/button and the in-HUD pause button through the
+        // same pause/confirm flow, so App.kt needs no back handling of its own for this screen.
+        BackHandler(enabled = true) {
+            when {
+                session.hud.phase == Phase.WON || session.hud.phase == Phase.LOST -> onExit()
+                paused -> paused = false
+                else -> paused = true
+            }
+        }
 
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(session, scale) {
+                .pointerInput(session, scale, ceilingScreenY) {
                     fun screenToWorld(pos: Offset): Vec2 {
                         val ceilingY = session.latestState.ceilingY
-                        return Vec2(pos.x / scale, ceilingY + pos.y / scale)
-                    }
-
-                    fun originPx(): Offset {
-                        val origin = session.latestState.shooterOrigin
-                        val ceilingY = session.latestState.ceilingY
-                        return Offset(origin.x * scale, (origin.y - ceilingY) * scale)
+                        val offsetY = ceilingScreenY - ceilingY * scale
+                        return Vec2(pos.x / scale, ceilingY + (pos.y - offsetY) / scale)
                     }
 
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val downTimeMs = System.currentTimeMillis()
-                        val isShooterTap = (down.position - originPx()).getDistance() <= shooterRadiusPx
                         var lastDir: Vec2? = null
                         var precisionActive = false
-                        var moved = false
 
-                        if (!isShooterTap) {
-                            val dir = screenToWorld(down.position) - session.latestState.shooterOrigin
-                            if (dir.y < -0.05f) {
-                                lastDir = dir
-                                session.enqueue(GameInput.AimAt(dir))
-                            }
+                        val initialDir = screenToWorld(down.position) - session.latestState.shooterOrigin
+                        if (initialDir.y < -0.05f) {
+                            lastDir = initialDir
+                            session.enqueue(GameInput.AimAt(initialDir))
                         }
 
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
 
-                            if ((change.position - down.position).getDistance() > movementThresholdPx) moved = true
-
                             if (change.changedToUpIgnoreConsumed()) {
-                                if (!isShooterTap && lastDir != null) {
-                                    session.enqueue(GameInput.Fire)
-                                } else if (isShooterTap && !moved && System.currentTimeMillis() - downTimeMs < TAP_TIME_MS) {
-                                    session.enqueue(GameInput.Swap)
-                                }
+                                if (lastDir != null) session.enqueue(GameInput.Fire)
                                 session.timeScale = 1f
                                 session.enqueue(GameInput.Precision(false))
                                 change.consume()
                                 break
                             }
 
-                            if (!isShooterTap) {
-                                val dir = screenToWorld(change.position) - session.latestState.shooterOrigin
-                                if (dir.y < -0.05f) {
-                                    val changedEnough = lastDir == null || angleBetween(lastDir!!, dir) > MIN_AIM_ANGLE_CHANGE_RAD
-                                    if (changedEnough) {
-                                        lastDir = dir
-                                        session.enqueue(GameInput.AimAt(dir))
-                                    }
+                            val dir = screenToWorld(change.position) - session.latestState.shooterOrigin
+                            if (dir.y < -0.05f) {
+                                val changedEnough = lastDir == null || angleBetween(lastDir!!, dir) > MIN_AIM_ANGLE_CHANGE_RAD
+                                if (changedEnough) {
+                                    lastDir = dir
+                                    session.enqueue(GameInput.AimAt(dir))
                                 }
-                                val heldMs = System.currentTimeMillis() - downTimeMs
-                                if (heldMs > PRECISION_HOLD_MS && !precisionActive) {
-                                    precisionActive = true
-                                    session.timeScale = 0.25f
-                                    session.enqueue(GameInput.Precision(true))
-                                }
+                            }
+                            val heldMs = System.currentTimeMillis() - downTimeMs
+                            if (heldMs > PRECISION_HOLD_MS && !precisionActive) {
+                                precisionActive = true
+                                session.timeScale = 0.25f
+                                session.enqueue(GameInput.Precision(true))
                             }
                             change.consume()
                         }
@@ -230,72 +263,145 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
         ) {
             session.frameTick.longValue // sole render-invalidation read
             BackgroundRenderer.draw(this, session.frameTick.longValue)
-            val layout = FieldLayout(scale = scale, offsetX = 0f, offsetY = 0f)
+            // The ceiling steps up over time in Endless mode; recompute its screen offset every
+            // frame from the live state so the ceiling stays glued to the HUD's bottom edge.
+            val ceilingYUnit = session.latestState.ceilingY
+            val layout = FieldLayout(scale = scale, offsetX = 0f, offsetY = ceilingScreenY - ceilingYUnit * scale)
             GameRenderer.draw(this, session, sprites, layout)
         }
 
-        Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+        // --- HUD ------------------------------------------------------------------------------
+        val feverColor = if (session.hud.feverActive) Neon.magenta else Neon.gold
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .statusBarsPadding(),
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+                    .height(48.dp)
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "分数 ${session.hud.score}",
+                    text = "分数 " + String.format(Locale.US, "%,d", session.hud.score),
                     color = Neon.textPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
                 if (session.hud.shotsLeft >= 0) {
-                    Text(
-                        text = "剩余 ${session.hud.shotsLeft}",
-                        color = Neon.textDim,
-                        fontSize = 16.sp,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(end = 12.dp),
-                    )
+                    ) {
+                        Text(text = "剩余", color = Neon.textDim, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "●", color = Neon.gold, fontSize = 14.sp)
+                        Text(text = " × ${session.hud.shotsLeft}", color = Neon.textDim, fontSize = 16.sp)
+                    }
                 }
-                Text(
-                    text = "⏸",
-                    color = Neon.textPrimary,
-                    fontSize = 22.sp,
+                Box(
                     modifier = Modifier
+                        .size(48.dp)
                         .clickable {
                             container.sfx.play(Sfx.UI_TAP)
                             paused = true
-                        }
-                        .padding(4.dp),
-                )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "⏸", color = Neon.textPrimary, fontSize = 22.sp)
+                }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            val feverColor = if (session.hud.feverActive) Neon.magenta else Neon.gold
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .height(6.dp)
-                    .background(Color(0x22FFFFFF), RoundedCornerShape(3.dp)),
+                    .height(8.dp)
+                    .background(Color(0x22FFFFFF), RoundedCornerShape(4.dp)),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(fraction = session.hud.feverMeter.coerceIn(0f, 1f))
-                        .background(feverColor, RoundedCornerShape(3.dp)),
+                        .background(feverColor, RoundedCornerShape(4.dp)),
                 )
             }
         }
 
-        Text(
-            text = "换",
-            color = Neon.textDim,
-            fontSize = 12.sp,
+        // --- Swap controls (visual == hit zone) ------------------------------------------------
+        // The shooter's actual rendered position (post-clamp), so these buttons always sit right
+        // where the shooter is drawn, never at the pre-clamp target.
+        val actualShooterScreenY = ceilingScreenY + shooterDistance * scale
+        val shooterScreenX = session.latestState.shooterOrigin.x * scale
+        val shooterVisualRadiusPx = scale * 1.6f
+        val buttonGapPx = with(density) { 16.dp.toPx() }
+        val canSwap = session.hud.phase == Phase.AIMING
+
+        fun performSwap() {
+            if (!canSwap) return
+            container.sfx.play(Sfx.UI_TAP)
+            container.haptics.tick()
+            session.enqueue(GameInput.Swap)
+        }
+
+        val nextButtonSizePx = with(density) { 48.dp.toPx() }
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 92.dp),
-        )
+                .align(Alignment.TopStart)
+                .offset {
+                    IntOffset(
+                        (shooterScreenX - shooterVisualRadiusPx - buttonGapPx - nextButtonSizePx).roundToInt(),
+                        (actualShooterScreenY - nextButtonSizePx / 2f).roundToInt(),
+                    )
+                }
+                .size(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0x330A1030))
+                .clickable(enabled = canSwap) { performSwap() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                bitmap = iconSprites.forAmmo(session.hud.nextAmmo),
+                contentDescription = "下一发",
+                modifier = Modifier.size(36.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xCC0A1030)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "⇄", color = Neon.cyan, fontSize = 9.sp)
+            }
+        }
+
+        val pillButtonHeightPx = with(density) { 40.dp.toPx() }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset {
+                    IntOffset(
+                        (shooterScreenX + shooterVisualRadiusPx + buttonGapPx).roundToInt(),
+                        (actualShooterScreenY - pillButtonHeightPx / 2f).roundToInt(),
+                    )
+                }
+                .height(40.dp)
+                .widthIn(min = 64.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0x330A1030))
+                .border(width = 1.dp, color = Neon.cyan.copy(alpha = 0.4f), shape = RoundedCornerShape(20.dp))
+                .clickable(enabled = canSwap) { performSwap() }
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "⇄ 交换", color = Neon.cyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
 
         if (paused) {
             PauseOverlay(
@@ -336,6 +442,7 @@ private fun PauseOverlay(
     onRestart: () -> Unit,
     onExit: () -> Unit,
 ) {
+    var confirmingExit by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -343,22 +450,44 @@ private fun PauseOverlay(
         contentAlignment = Alignment.Center,
     ) {
         NeonPanel {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "已暂停", color = Neon.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                MenuButton("继续") {
-                    container.sfx.play(Sfx.UI_TAP)
-                    onResume()
+            if (!confirmingExit) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "已暂停", color = Neon.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    MenuButton("继续") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        onResume()
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MenuButton("重新开始") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        onRestart()
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MenuButton("退出") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        confirmingExit = true
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                MenuButton("重新开始") {
-                    container.sfx.play(Sfx.UI_TAP)
-                    onRestart()
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                MenuButton("退出") {
-                    container.sfx.play(Sfx.UI_TAP)
-                    onExit()
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "退出对局？本局进度将丢失",
+                        color = Neon.textPrimary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    MenuButton("继续") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        confirmingExit = false
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MenuButton("退出") {
+                        container.sfx.play(Sfx.UI_TAP)
+                        onExit()
+                    }
                 }
             }
         }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,128 +63,110 @@ fun EndlessSetupScreen(container: AppContainer, onStart: (Set<Mutator>) -> Unit,
             .fillMaxSize()
             .background(Brush.verticalGradient(Neon.spaceGradient)),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "←",
-                    color = Neon.textPrimary,
-                    fontSize = 22.sp,
-                    modifier = Modifier.clickable {
-                        container.sfx.play(Sfx.UI_TAP)
-                        onBack()
-                    },
-                )
-                Text(
-                    text = "无尽模式",
-                    color = Neon.cyan,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(modifier = Modifier.width(22.dp))
-            }
+        Column(modifier = Modifier.fillMaxSize()) {
+            NeonTopBar(container = container, title = "无尽模式", onBack = onBack)
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(24.dp),
+            ) {
+                NeonPanel(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "调整变量",
+                            color = Neon.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        for (mutator in Mutator.entries) {
+                            MutatorToggleRow(
+                                mutator = mutator,
+                                checked = mutator in selected,
+                                onToggle = {
+                                    container.sfx.play(Sfx.UI_TAP)
+                                    selected = if (mutator in selected) selected - mutator else selected + mutator
+                                },
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "总倍率 ×${String.format(Locale.US, "%.2f", multiplier)}",
+                            color = Neon.gold,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
 
-            NeonPanel(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "调整变量",
-                        color = Neon.textPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    for (mutator in Mutator.entries) {
-                        MutatorToggleRow(
-                            mutator = mutator,
-                            checked = mutator in selected,
-                            onToggle = {
-                                container.sfx.play(Sfx.UI_TAP)
-                                selected = if (mutator in selected) selected - mutator else selected + mutator
-                            },
+                Spacer(modifier = Modifier.height(20.dp))
+
+                NeonPanel(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "最高纪录",
+                            color = Neon.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "总倍率 ×${String.format(Locale.US, "%.2f", multiplier)}",
-                        color = Neon.gold,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            NeonPanel(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "最高纪录",
-                        color = Neon.textPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val top5 = save.endlessHighs.take(5)
-                    if (top5.isEmpty()) {
-                        Text(text = "暂无纪录，去创造第一个吧！", color = Neon.textDim, fontSize = 13.sp)
-                    } else {
-                        top5.forEachIndexed { index, record ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = "${index + 1}.",
-                                    color = Neon.textDim,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.width(28.dp),
-                                )
-                                Text(
-                                    text = "${record.score}",
-                                    color = Neon.textPrimary,
-                                    fontSize = 14.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (record.mutators.isNotEmpty()) {
+                        val top5 = save.endlessHighs.take(5)
+                        if (top5.isEmpty()) {
+                            Text(text = "暂无纪录，去创造第一个吧！", color = Neon.textDim, fontSize = 13.sp)
+                        } else {
+                            top5.forEachIndexed { index, record ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = record.mutators.joinToString(" ") { it.displayLabel().substringBefore(" ") },
+                                        text = "${index + 1}.",
                                         color = Neon.textDim,
-                                        fontSize = 11.sp,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.width(28.dp),
                                     )
+                                    Text(
+                                        text = "${record.score}",
+                                        color = Neon.textPrimary,
+                                        fontSize = 14.sp,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (record.mutators.isNotEmpty()) {
+                                        Text(
+                                            text = record.mutators.joinToString(" ") { it.displayLabel().substringBefore(" ") },
+                                            color = Neon.textDim,
+                                            fontSize = 11.sp,
+                                        )
+                                    }
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                Text(
+                    text = "开始",
+                    color = Neon.textPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            container.sfx.play(Sfx.UI_TAP)
+                            container.haptics.tick()
+                            onStart(selected)
+                        }
+                        .background(Color(0x330A1030), RoundedCornerShape(14.dp))
+                        .padding(vertical = 14.dp),
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            Text(
-                text = "开始",
-                color = Neon.textPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        container.sfx.play(Sfx.UI_TAP)
-                        container.haptics.tick()
-                        onStart(selected)
-                    }
-                    .background(Color(0x330A1030), RoundedCornerShape(14.dp))
-                    .padding(vertical = 14.dp),
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

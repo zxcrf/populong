@@ -1,7 +1,6 @@
 package com.populong.bubbleshooter.ui.menu
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.populong.bubbleshooter.AppContainer
-import com.populong.bubbleshooter.audio.Sfx
 import com.populong.bubbleshooter.core.progress.AchievementDef
 import com.populong.bubbleshooter.core.progress.Achievements
 import com.populong.bubbleshooter.ui.theme.Neon
@@ -60,31 +58,7 @@ fun AchievementsScreen(container: AppContainer, onBack: () -> Unit) {
             .background(Brush.verticalGradient(Neon.spaceGradient)),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
-                Text(
-                    text = "←",
-                    color = Neon.textPrimary,
-                    fontSize = 22.sp,
-                    modifier = Modifier.clickable {
-                        container.sfx.play(Sfx.UI_TAP)
-                        onBack()
-                    },
-                )
-                Text(
-                    text = "成就",
-                    color = Neon.cyan,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(modifier = Modifier.width(22.dp))
-            }
+            NeonTopBar(container = container, title = "成就", onBack = onBack)
 
             Text(
                 text = "已解锁 $unlockedCount / ${Achievements.all.size}",
@@ -99,7 +73,15 @@ fun AchievementsScreen(container: AppContainer, onBack: () -> Unit) {
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                // Bottom system-bar inset merged into the content padding (rather than a
+                // Modifier.navigationBarsPadding() on the LazyColumn itself, which would clip
+                // scrolled content) so the last row never sits under the gesture nav bar.
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = 8.dp + navigationBarsBottomDp(),
+                ),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(items = Achievements.all, key = { it.id }) { def ->

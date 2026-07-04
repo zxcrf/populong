@@ -17,6 +17,16 @@ class MainActivity : ComponentActivity() {
         setContent { App(container) }
     }
 
+    override fun onPause() {
+        container.music.stop()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (container.musicEnabled.value) container.music.start()
+    }
+
     override fun onDestroy() {
         container.release()
         super.onDestroy()

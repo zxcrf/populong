@@ -1,7 +1,9 @@
 package com.populong.bubbleshooter.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +56,34 @@ sealed interface Screen {
 fun App(container: AppContainer) {
     var screen by remember { mutableStateOf<Screen>(Screen.Menu) }
 
+    /**
+     * Single source of truth for "go back" from any menu-tier screen (galaxy map, the two mode
+     * setup screens, settings, achievements, stats): all of them return straight to [Screen.Menu].
+     * [Screen.Game] is unreachable here — [BackHandler] below is disabled while it's showing, since
+     * `GameScreen` owns its own back handling and in-game exit-confirm dialog. Falling through to
+     * [Screen.Menu] returns `Unit` so the system's default back behavior (leave the app) applies,
+     * i.e. we deliberately don't intercept back from the home screen.
+     */
+    fun navigateBack() {
+        screen = when (val s = screen) {
+            is Screen.Game -> s
+            Screen.Menu -> return
+            else -> Screen.Menu
+        }
+    }
+
+    // Duck background music while a game run is active; restore it the moment we leave one.
+    // AppContainer.music/setScene land with Agent C's changes.
+    LaunchedEffect(screen) { container.music.setScene(screen is Screen.Game) }
+
+    // Unified Android gesture-/button-back for every non-Game, non-Menu screen. `GameScreen`
+    // registers its own BackHandler for its in-game exit-confirm dialog; the OnBackPressedDispatcher
+    // is a LIFO stack, and Compose composes GameScreen's content (and therefore its BackHandler)
+    // *after* this one, so while a Game screen is showing its handler is registered later and wins
+    // regardless of this one's `enabled` state — but we still gate on `screen !is Screen.Game`
+    // here for clarity and to avoid ever having two enabled back callbacks active at once.
+    BackHandler(enabled = screen != Screen.Menu && screen !is Screen.Game) { navigateBack() }
+
     Crossfade(targetState = screen, label = "screen-crossfade") { current ->
         when (current) {
             is Screen.Menu -> MainMenuScreen(
@@ -68,17 +98,17 @@ fun App(container: AppContainer) {
 
             is Screen.Settings -> SettingsScreen(
                 container = container,
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.Achievements -> AchievementsScreen(
                 container = container,
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.Stats -> StatsScreen(
                 container = container,
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.GalaxyMap -> GalaxyMapScreen(
@@ -86,7 +116,7 @@ fun App(container: AppContainer) {
                 onPick = { level ->
                     screen = Screen.Game(GameMode.Level(LevelCatalog.spec(level)), origin = Screen.GalaxyMap)
                 },
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.EndlessSetup -> EndlessSetupScreen(
@@ -94,13 +124,13 @@ fun App(container: AppContainer) {
                 onStart = { mutators ->
                     screen = Screen.Game(GameMode.Endless(mutators), origin = Screen.EndlessSetup)
                 },
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.DailySetup -> DailyScreen(
                 container = container,
                 onStart = { mode -> screen = Screen.Game(mode, origin = Screen.DailySetup) },
-                onBack = { screen = Screen.Menu },
+                onBack = { navigateBack() },
             )
 
             is Screen.Game -> {

@@ -32,7 +32,12 @@ data class DailyState(
 
 /** User-configurable presentation preferences. */
 @Serializable
-data class GameSettings(val sound: Boolean = true, val haptics: Boolean = true)
+data class GameSettings(
+    val sound: Boolean = true,
+    val haptics: Boolean = true,
+    val music: Boolean = true,
+    val musicStyle: String = "chiptune",
+)
 
 /** Cumulative, lifetime statistics accrued across every game played. */
 @Serializable

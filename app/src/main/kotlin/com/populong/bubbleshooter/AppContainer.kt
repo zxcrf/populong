@@ -3,6 +3,8 @@ package com.populong.bubbleshooter
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import com.populong.bubbleshooter.audio.MusicPlayer
+import com.populong.bubbleshooter.audio.MusicStyle
 import com.populong.bubbleshooter.audio.SfxPlayer
 import com.populong.bubbleshooter.data.SaveRepository
 import com.populong.bubbleshooter.haptics.HapticsManager
@@ -34,6 +36,20 @@ class AppContainer(context: Context) {
     /** The platform haptics wrapper, gated by [hapticsEnabled]. */
     val haptics: HapticsManager = HapticsManager(context.applicationContext, enabled = { hapticsEnabled.value })
 
+    /** Whether background music should play. Seeded from the persisted save; mutate via [setMusic]. */
+    val musicEnabled: MutableState<Boolean> = mutableStateOf(save.save.value.settings.music)
+
+    /** The currently selected BGM style. Seeded from the persisted save; mutate via [setMusicStyle]. */
+    val musicStyle: MutableState<MusicStyle> = mutableStateOf(
+        MusicStyle.entries.firstOrNull { it.id == save.save.value.settings.musicStyle } ?: MusicStyle.CHIPTUNE,
+    )
+
+    /** The synthesized BGM player, gated by [musicEnabled]. See [AppContainer]'s frozen contract with the game screen. */
+    val music: MusicPlayer = MusicPlayer(enabled = { musicEnabled.value }).also {
+        it.prepare(musicStyle.value)
+        if (musicEnabled.value) it.start()
+    }
+
     /** Updates the runtime sound toggle and persists the choice into [save]. */
     fun setSound(on: Boolean) {
         soundEnabled.value = on
@@ -46,9 +62,24 @@ class AppContainer(context: Context) {
         save.update { it.copy(settings = it.settings.copy(haptics = on)) }
     }
 
+    /** Updates the runtime music toggle, persists the choice into [save], and starts/stops [music] to match. */
+    fun setMusic(on: Boolean) {
+        musicEnabled.value = on
+        save.update { it.copy(settings = it.settings.copy(music = on)) }
+        music.setEnabled(on)
+    }
+
+    /** Updates the selected BGM style, persists the choice into [save], and switches [music] to it live. */
+    fun setMusicStyle(style: MusicStyle) {
+        musicStyle.value = style
+        save.update { it.copy(settings = it.settings.copy(musicStyle = style.id)) }
+        music.switchStyle(style)
+    }
+
     /** Releases underlying platform resources (audio tracks). Safe to call multiple times. */
     fun release() {
         sfx.release()
+        music.release()
     }
 
     companion object {

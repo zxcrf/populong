@@ -73,6 +73,31 @@ class SaveCodecTest {
     }
 
     @Test
+    fun `old save JSON without music fields decodes to music defaults, and new fields round trip`() {
+        val oldJson = """
+            {
+              "version": 1,
+              "levels": {},
+              "endlessHighs": [],
+              "achievements": [],
+              "stats": {},
+              "daily": {},
+              "settings": {"sound": false, "haptics": true}
+            }
+        """.trimIndent()
+        val decoded = SaveCodec.decode(oldJson)
+        assertEquals(
+            GameSettings(sound = false, haptics = true, music = true, musicStyle = "chiptune"),
+            decoded.settings,
+        )
+
+        val withMusic = SaveData(
+            settings = GameSettings(sound = true, haptics = false, music = false, musicStyle = "synthwave"),
+        )
+        assertEquals(withMusic, SaveCodec.decode(SaveCodec.encode(withMusic)))
+    }
+
+    @Test
     fun `decode tolerates unknown fields for forward compatibility`() {
         val json = """
             {

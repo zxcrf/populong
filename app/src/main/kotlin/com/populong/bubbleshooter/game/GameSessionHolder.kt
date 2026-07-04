@@ -8,6 +8,7 @@ import com.populong.bubbleshooter.audio.Sfx
 import com.populong.bubbleshooter.audio.SfxBank
 import com.populong.bubbleshooter.audio.SfxPlayer
 import com.populong.bubbleshooter.core.engine.Ammo
+import com.populong.bubbleshooter.core.engine.GameConfig
 import com.populong.bubbleshooter.core.engine.GameEngine
 import com.populong.bubbleshooter.core.engine.GameEvent
 import com.populong.bubbleshooter.core.engine.GameInput
@@ -50,6 +51,7 @@ class GameSessionHolder(
     seed: Long,
     private val sfx: SfxPlayer,
     private val haptics: HapticsManager,
+    config: GameConfig = GameConfig(),
 ) {
     private companion object {
         /** Safety valve: never simulate more than this many ticks in a single [advance] call. */
@@ -59,7 +61,7 @@ class GameSessionHolder(
         const val MAX_EVENTS = 64
     }
 
-    private val engine = GameEngine()
+    private val engine = GameEngine(config)
 
     /** The authoritative game state. Mutated only inside [advance]/[enqueue]; read freely. */
     var latestState: GameState = engine.initialState(mode, seed)

@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.populong.bubbleshooter.AppContainer
+import com.populong.bubbleshooter.audio.MusicStyle
 import com.populong.bubbleshooter.audio.Sfx
 import com.populong.bubbleshooter.ui.theme.Neon
 import com.populong.bubbleshooter.ui.theme.NeonPanel
@@ -59,19 +64,23 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "←",
-                    color = Neon.textPrimary,
-                    fontSize = 22.sp,
-                    modifier = Modifier.clickable {
-                        container.sfx.play(Sfx.UI_TAP)
-                        onBack()
-                    },
-                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable {
+                            container.sfx.play(Sfx.UI_TAP)
+                            onBack()
+                        },
+                ) {
+                    Text(text = "←", color = Neon.textPrimary, fontSize = 24.sp)
+                }
                 Text(
                     text = "设置",
                     color = Neon.cyan,
@@ -80,7 +89,7 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(modifier = Modifier.width(22.dp))
+                Spacer(modifier = Modifier.width(48.dp))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -106,6 +115,32 @@ fun SettingsScreen(container: AppContainer, onBack: () -> Unit) {
                             container.setHaptics(next)
                         },
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            NeonPanel(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SettingToggleRow(
+                        label = "背景音乐",
+                        checked = container.musicEnabled.value,
+                        onToggle = { next ->
+                            container.sfx.play(Sfx.UI_TAP)
+                            container.setMusic(next)
+                        },
+                    )
+                    if (container.musicEnabled.value) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            MusicStyleChip(container, MusicStyle.CHIPTUNE, "街机")
+                            MusicStyleChip(container, MusicStyle.SYNTHWAVE, "太空")
+                            MusicStyleChip(container, MusicStyle.KAWAII, "轻快")
+                        }
+                    }
                 }
             }
 
@@ -191,6 +226,40 @@ private fun NeonToggleSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Uni
                 .offset(x = knobOffset.dp)
                 .size(KNOB_SIZE_DP.dp)
                 .background(color = Neon.textPrimary, shape = CircleShape),
+        )
+    }
+}
+
+/**
+ * A selectable music-style chip: bright cyan border and fill when it is the active
+ * [MusicStyle], dim slate otherwise. Tapping switches the looping BGM immediately.
+ */
+@Composable
+private fun MusicStyleChip(container: AppContainer, style: MusicStyle, tagline: String) {
+    val selected = container.musicStyle.value == style
+    val border = if (selected) Neon.cyan else Color(0x33FFFFFF)
+    val fill = if (selected) Color(0x334DE3FF) else Color(0x1AFFFFFF)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable {
+                container.sfx.play(Sfx.UI_TAP)
+                container.setMusicStyle(style)
+            }
+            .background(color = fill, shape = RoundedCornerShape(10.dp))
+            .border(width = 1.dp, color = border, shape = RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = style.title,
+            color = if (selected) Neon.cyan else Neon.textPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = tagline,
+            color = Neon.textDim,
+            fontSize = 11.sp,
         )
     }
 }

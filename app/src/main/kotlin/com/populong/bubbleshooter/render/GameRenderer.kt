@@ -224,18 +224,8 @@ object GameRenderer {
             dstOffset = IntOffset((center.x - currentW / 2f).roundToInt(), (center.y - currentH / 2f).roundToInt()),
             dstSize = IntSize(currentW.roundToInt(), currentH.roundToInt()),
         )
-
-        val nextSprite = sprites.forAmmo(state.nextAmmo)
-        val nextScale = 0.55f
-        val nextW = nextSprite.width * nextScale
-        val nextH = nextSprite.height * nextScale
-        val nextCenter = center + Offset(layout.scale * 1.8f, layout.scale * 0.6f)
-        drawImage(
-            image = nextSprite,
-            dstOffset = IntOffset((nextCenter.x - nextW / 2f).roundToInt(), (nextCenter.y - nextH / 2f).roundToInt()),
-            dstSize = IntSize(nextW.roundToInt(), nextH.roundToInt()),
-            alpha = 0.85f,
-        )
+        // Next-ammo preview is drawn by GameScreen's swap button overlay instead (BubbleSprites.forAmmo
+        // on the next-bubble button), so the hit zone and its visual match exactly.
     }
 
     private fun DrawScope.drawFeverGlow(ticks: Long) {

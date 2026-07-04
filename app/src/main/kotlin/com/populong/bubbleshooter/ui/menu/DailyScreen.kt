@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,75 +56,59 @@ fun DailyScreen(container: AppContainer, onStart: (GameMode) -> Unit, onBack: ()
             .fillMaxSize()
             .background(Brush.verticalGradient(Neon.spaceGradient)),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            NeonTopBar(container = container, title = "每日挑战", onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .padding(24.dp),
+            ) {
+                Spacer(modifier = Modifier.height(20.dp))
+
                 Text(
-                    text = "←",
-                    color = Neon.textPrimary,
-                    fontSize = 22.sp,
-                    modifier = Modifier.clickable {
-                        container.sfx.play(Sfx.UI_TAP)
-                        onBack()
-                    },
-                )
-                Text(
-                    text = "每日挑战",
-                    color = Neon.cyan,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(modifier = Modifier.height(22.dp))
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "连续 ${save.daily.streak} 天",
-                color = Neon.gold,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            NeonPanel(modifier = Modifier.fillMaxWidth()) {
-                MonthCalendar(month = YearMonth.from(today), today = today, completedDays = save.daily.completedDays)
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            if (completedToday) {
-                Text(
-                    text = "今日已完成 ✓",
-                    color = Neon.mint,
+                    text = "连续 ${save.daily.streak} 天",
+                    color = Neon.gold,
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.SemiBold,
                 )
-            } else {
-                Text(
-                    text = "开始今日挑战",
-                    color = Neon.textPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            container.sfx.play(Sfx.UI_TAP)
-                            container.haptics.tick()
-                            onStart(GameMode.Daily(DailyLevel.forEpochDay(todayEpochDay)))
-                        }
-                        .background(Color(0x330A1030), RoundedCornerShape(14.dp))
-                        .padding(vertical = 14.dp),
-                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                NeonPanel(modifier = Modifier.fillMaxWidth()) {
+                    MonthCalendar(month = YearMonth.from(today), today = today, completedDays = save.daily.completedDays)
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                if (completedToday) {
+                    Text(
+                        text = "今日已完成 ✓",
+                        color = Neon.mint,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(
+                        text = "开始今日挑战",
+                        color = Neon.textPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                container.sfx.play(Sfx.UI_TAP)
+                                container.haptics.tick()
+                                onStart(GameMode.Daily(DailyLevel.forEpochDay(todayEpochDay)))
+                            }
+                            .background(Color(0x330A1030), RoundedCornerShape(14.dp))
+                            .padding(vertical = 14.dp),
+                    )
+                }
             }
         }
     }

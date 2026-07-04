@@ -100,6 +100,19 @@ class GameEngineTest {
     }
 
     @Test
+    fun `a custom shooterDistance repositions the shooter and shots still land correctly`() {
+        val customEngine = GameEngine(GameConfig(shooterDistance = 30f))
+        val mode = level(mapOf(pos(0, 3) to Bubble.Colored(RED), pos(0, 5) to Bubble.Colored(RED), pos(0, 8) to Bubble.Colored(GREEN)))
+        val s0 = start(mode, current = Ammo.ColorAmmo(RED), engine = customEngine)
+        assertEquals(s0.ceilingY + 30f, s0.shooterOrigin.y)
+
+        val (s, events) = fire(s0, engine = customEngine)
+        val popped = events.only<GameEvent.Popped>()
+        assertEquals(setOf(pos(0, 3), pos(0, 4), pos(0, 5)), popped.cells)
+        assertEquals(RED, popped.color)
+    }
+
+    @Test
     fun `a non-matching shot breaks the combo`() {
         val mode = level(mapOf(pos(0, 0) to Bubble.Colored(BLUE)))
         val base = start(mode, current = Ammo.ColorAmmo(RED)).copy(combo = 3)

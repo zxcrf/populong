@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -113,6 +116,8 @@ fun MainMenuScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -198,26 +203,24 @@ fun MainMenuScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                Text(
-                    text = "⚙ 设置",
-                    color = Neon.textDim,
-                    fontSize = 15.sp,
-                    modifier = Modifier.clickable { playAndGo(onOpenSettings) },
-                )
-                Text(
-                    text = "🏆 成就",
-                    color = Neon.textDim,
-                    fontSize = 15.sp,
-                    modifier = Modifier.clickable { playAndGo(onOpenAchievements) },
-                )
-                Text(
-                    text = "📊 统计",
-                    color = Neon.textDim,
-                    fontSize = 15.sp,
-                    modifier = Modifier.clickable { playAndGo(onOpenStats) },
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MenuIconButton(label = "⚙ 设置", onClick = { playAndGo(onOpenSettings) })
+                MenuIconButton(label = "🏆 成就", onClick = { playAndGo(onOpenAchievements) })
+                MenuIconButton(label = "📊 统计", onClick = { playAndGo(onOpenStats) })
             }
         }
+    }
+}
+
+/** A 48dp-square tap target for the bottom icon row, matching [NeonTopBar]'s back-button target. */
+@Composable
+private fun MenuIconButton(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = label, color = Neon.textDim, fontSize = 15.sp)
     }
 }
