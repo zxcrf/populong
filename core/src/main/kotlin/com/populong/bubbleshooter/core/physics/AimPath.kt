@@ -1,0 +1,63 @@
+package com.populong.bubbleshooter.core.physics
+
+import com.populong.bubbleshooter.core.grid.BubbleGrid
+import com.populong.bubbleshooter.core.grid.GridPos
+import com.populong.bubbleshooter.core.grid.Vec2
+
+/**
+ * The previewed trajectory of a shot.
+ *
+ * @property points polyline vertices: the origin, each wall-bounce point, and the contact point.
+ * @property landingCell the empty cell a fired projectile would snap into, or null if none is in range.
+ * @property bounces the number of wall reflections along the previewed path.
+ */
+data class AimResult(val points: List<Vec2>, val landingCell: GridPos?, val bounces: Int)
+
+/**
+ * Computes the aiming preview. It marches the same substeps and uses the exact same contact
+ * predicate and snap rule as [ProjectileSim] (via [CollisionModel]), so the preview's
+ * [AimResult.landingCell] always equals where a projectile fired along the same direction lands.
+ */
+object AimPath {
+
+    private const val GUARD_LIMIT = 100_000
+
+    /**
+     * The polyline from [origin] along [dir] (expected normalized with `dir.y < 0`), reflecting off
+     * the side walls up to [maxBounces] times, ending at the first bubble or ceiling contact.
+     */
+    fun compute(grid: BubbleGrid, ceilingY: Float, origin: Vec2, dir: Vec2, maxBounces: Int): AimResult {
+        val fieldWidth = 2f * grid.evenCols
+        val points = ArrayList<Vec2>()
+        points.add(origin)
+
+        var pos = origin
+        var vel = dir.normalized()
+        var bounces = 0
+        var guard = 0
+
+        while (guard++ < GUARD_LIMIT) {
+            val prev = pos
+            val (nextPos, nextVel, bounced) = CollisionModel.advance(pos, vel, fieldWidth, CollisionModel.MAX_SUBSTEP)
+            pos = nextPos
+            vel = nextVel
+            if (bounced) {
+                if (bounces + 1 > maxBounces) {
+                    points.add(pos)
+                    return AimResult(points, null, bounces)
+                }
+                bounces++
+                points.add(pos)
+            }
+
+            val contact = CollisionModel.contactAt(grid, ceilingY, pos)
+            if (contact != null) {
+                points.add(pos)
+                val cell = CollisionModel.snap(grid, contact, pos, prev)
+                return AimResult(points, cell, bounces)
+            }
+        }
+        points.add(pos)
+        return AimResult(points, null, bounces)
+    }
+}
