@@ -66,6 +66,10 @@ data class SaveData(
     val stats: CareerStats = CareerStats(),
     val daily: DailyState = DailyState(),
     val settings: GameSettings = GameSettings(),
+    /** The player's stardust balance, earned in-run and spent unlocking [Constellations.all] entries. */
+    val stardust: Long = 0,
+    /** Ids of [ConstellationDef]s permanently unlocked via [unlockConstellation]. */
+    val unlockedConstellations: Set<String> = emptySet(),
 )
 
 /**
@@ -121,6 +125,20 @@ fun SaveData.withDailyCompleted(epochDay: Long): SaveData {
             completedDays = daily.completedDays + epochDay,
         ),
     )
+}
+
+/** Adds [amount] stardust to the player's balance. */
+fun SaveData.earnStardust(amount: Long): SaveData = copy(stardust = stardust + amount)
+
+/**
+ * Attempts to unlock the constellation [id] at a stardust price of [cost]: deducts [cost] from
+ * [SaveData.stardust] and adds [id] to [SaveData.unlockedConstellations]. Returns `null` (no
+ * change) if [id] is already unlocked or the current balance is below [cost], so callers can
+ * simply fall back to the original save on failure, e.g. `save.unlockConstellation(id, cost) ?: save`.
+ */
+fun SaveData.unlockConstellation(id: String, cost: Long): SaveData? {
+    if (id in unlockedConstellations || stardust < cost) return null
+    return copy(stardust = stardust - cost, unlockedConstellations = unlockedConstellations + id)
 }
 
 /**

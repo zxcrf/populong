@@ -13,6 +13,7 @@ import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.game.GameScreen
 import com.populong.bubbleshooter.ui.menu.AchievementsScreen
+import com.populong.bubbleshooter.ui.menu.ConstellationScreen
 import com.populong.bubbleshooter.ui.menu.DailyScreen
 import com.populong.bubbleshooter.ui.menu.EndlessSetupScreen
 import com.populong.bubbleshooter.ui.menu.GalaxyMapScreen
@@ -43,6 +44,9 @@ sealed interface Screen {
     /** The career-stats screen, reached from Menu's「📊 统计」button. */
     data object Stats : Screen
 
+    /** The constellation gallery, reached from Menu's「✦ 图鉴」button. */
+    data object Constellations : Screen
+
     /** An active game run in [mode]; [origin] is the screen to return to on exit. */
     data class Game(val mode: GameMode, val origin: Screen) : Screen
 }
@@ -58,7 +62,8 @@ fun App(container: AppContainer) {
 
     /**
      * Single source of truth for "go back" from any menu-tier screen (galaxy map, the two mode
-     * setup screens, settings, achievements, stats): all of them return straight to [Screen.Menu].
+     * setup screens, settings, achievements, stats, constellations): all of them return straight
+     * to [Screen.Menu].
      * [Screen.Game] is unreachable here — [BackHandler] below is disabled while it's showing, since
      * `GameScreen` owns its own back handling and in-game exit-confirm dialog. Falling through to
      * [Screen.Menu] returns `Unit` so the system's default back behavior (leave the app) applies,
@@ -94,6 +99,7 @@ fun App(container: AppContainer) {
                 onOpenSettings = { screen = Screen.Settings },
                 onOpenAchievements = { screen = Screen.Achievements },
                 onOpenStats = { screen = Screen.Stats },
+                onOpenConstellations = { screen = Screen.Constellations },
             )
 
             is Screen.Settings -> SettingsScreen(
@@ -107,6 +113,11 @@ fun App(container: AppContainer) {
             )
 
             is Screen.Stats -> StatsScreen(
+                container = container,
+                onBack = { navigateBack() },
+            )
+
+            is Screen.Constellations -> ConstellationScreen(
                 container = container,
                 onBack = { navigateBack() },
             )

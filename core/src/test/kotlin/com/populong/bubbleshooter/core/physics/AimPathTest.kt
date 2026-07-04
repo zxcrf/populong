@@ -20,10 +20,10 @@ class AimPathTest {
     private val ceilingY = 0f
     private val origin = Vec2(evenCols.toFloat(), ceilingY + 12 * GridGeometry.ROW_HEIGHT + 1f)
 
-    private fun simLanding(grid: BubbleGrid, dir: Vec2): GridPos {
+    private fun simLanding(grid: BubbleGrid, dir: Vec2, gravityStrength: Float = 0f): GridPos {
         var p = Projectile(origin, dir.normalized() * 60f, Ammo.ColorAmmo(BubbleColor.RED), 0)
         repeat(1_000_000) {
-            when (val o = ProjectileSim.step(grid, ceilingY, fieldWidth, p, 1f / 120f)) {
+            when (val o = ProjectileSim.step(grid, ceilingY, fieldWidth, p, 1f / 120f, gravityStrength, 60f)) {
                 is SimOutcome.Moving -> p = o.projectile
                 is SimOutcome.Landed -> return o.cell
             }
@@ -98,6 +98,69 @@ class AimPathTest {
             }
         }
         assertTrue(checked >= 60, "expected a broad table of angles, got $checked")
+    }
+
+    @Test
+    fun `preview landing agrees with the simulation across angles with gravity wells`() {
+        val g = 40f
+        val wall = (0 until evenCols).associate { c -> GridPos(0, c) to Bubble.Colored(BubbleColor.PURPLE) }
+        val grids = listOf(
+            // One well.
+            BubbleGrid(
+                wall + mapOf(GridPos(4, 4) to Bubble.GravityWell),
+                evenCols,
+                0,
+            ),
+            // Two wells on opposite halves.
+            BubbleGrid(
+                wall + mapOf(
+                    GridPos(4, 2) to Bubble.GravityWell,
+                    GridPos(5, 6) to Bubble.GravityWell,
+                ),
+                evenCols,
+                0,
+            ),
+        )
+
+        var checked = 0
+        for (grid in grids) {
+            var k = -1.2f
+            while (k <= 1.2f) {
+                val dir = Vec2(k, -1f)
+                val preview = AimPath.compute(
+                    grid, ceilingY, origin, dir, maxBounces = 3, speed = 60f, gravityStrength = g,
+                )
+                val simCell = simLanding(grid, dir, gravityStrength = g)
+                assertEquals(simCell, preview.landingCell, "gravity mismatch at slope $k")
+                checked++
+                k += 0.15f
+            }
+        }
+        assertTrue(checked >= 30, "expected a broad table of angles, got $checked")
+    }
+
+    @Test
+    fun `preview landing agrees with the simulation through a wormhole pair`() {
+        val wall = (0 until evenCols).associate { c -> GridPos(0, c) to Bubble.Colored(BubbleColor.PURPLE) }
+        val grid = BubbleGrid(
+            wall + mapOf(
+                GridPos(6, 2) to Bubble.Wormhole(1),
+                GridPos(6, 6) to Bubble.Wormhole(1),
+            ),
+            evenCols,
+            0,
+        )
+        var checked = 0
+        var k = -1.0f
+        while (k <= 1.0f) {
+            val dir = Vec2(k, -1f)
+            val preview = AimPath.compute(grid, ceilingY, origin, dir, maxBounces = 3, speed = 60f)
+            val simCell = simLanding(grid, dir)
+            assertEquals(simCell, preview.landingCell, "wormhole mismatch at slope $k")
+            checked++
+            k += 0.1f
+        }
+        assertTrue(checked >= 15, "expected a table of angles, got $checked")
     }
 
     // --- visible-length truncation ------------------------------------------------------------

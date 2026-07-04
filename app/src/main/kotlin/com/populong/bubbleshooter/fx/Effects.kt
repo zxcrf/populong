@@ -301,6 +301,7 @@ class EffectsController(private val rng: java.util.Random = java.util.Random(7))
                 is GameEvent.Lost -> onLost(postGrid)
                 is GameEvent.SupernovaChained -> onSupernovaChained(event, preGrid)
                 is GameEvent.Landed -> onLanded(event, postGrid)
+                is GameEvent.PulsarToggled -> onPulsarToggled(event)
                 GameEvent.Fired -> onFired()
                 GameEvent.RowInserted -> onGridDrop()
                 GameEvent.CeilingStepped -> onGridDrop()
@@ -533,6 +534,20 @@ class EffectsController(private val rng: java.util.Random = java.util.Random(7))
             spring.oy = dy * NEIGHBOR_PUSH_UNITS
             spring.vx = 0f
             spring.vy = 0f
+        }
+    }
+
+    /** Pulsars that just lit up emit a small white "ping" of 4 sparks each; the dark transition is
+     * silent. */
+    private fun onPulsarToggled(event: GameEvent.PulsarToggled) {
+        if (!event.lit) return
+        for (pos in event.cells) {
+            val (px, py) = cellCenter(pos)
+            repeat(4) {
+                val angle = randF(0f, TWO_PI)
+                val speed = randF(0.4f, 1.0f)
+                particles.spawn(px, py, cos(angle) * speed, sin(angle) * speed, randF(0.3f, 0.5f), randF(0.04f, 0.08f), WHITE_ARGB)
+            }
         }
     }
 

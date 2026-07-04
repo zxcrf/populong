@@ -93,6 +93,34 @@ class BubbleGridTest {
     }
 
     @Test
+    fun `a wormhole portal keeps its whole connected component anchored`() {
+        val cells = mapOf(
+            GridPos(5, 0) to Bubble.Wormhole(1),
+            GridPos(6, 0) to Bubble.Colored(BubbleColor.GREEN),
+            // isolated, not connected to the wormhole -> not anchored
+            GridPos(9, 0) to Bubble.Colored(BubbleColor.YELLOW),
+        )
+        val grid = BubbleGrid(cells, evenCols = 8, ceilingRow = 0)
+        val anchored = grid.anchored()
+        assertTrue(GridPos(5, 0) in anchored)
+        assertTrue(GridPos(6, 0) in anchored)
+        assertFalse(GridPos(9, 0) in anchored)
+    }
+
+    @Test
+    fun `a gravity well is not an anchor and falls when detached`() {
+        val cells = mapOf(
+            GridPos(0, 0) to Bubble.Colored(BubbleColor.RED),
+            // a well hanging free, not connected to the ceiling
+            GridPos(5, 0) to Bubble.GravityWell,
+        )
+        val grid = BubbleGrid(cells, evenCols = 8, ceilingRow = 0)
+        val anchored = grid.anchored()
+        assertTrue(GridPos(0, 0) in anchored)
+        assertFalse(GridPos(5, 0) in anchored, "a detached gravity well must not anchor itself")
+    }
+
+    @Test
     fun `negative ceilingRow works`() {
         val cells = mapOf(
             GridPos(-3, 0) to Bubble.Colored(BubbleColor.RED),

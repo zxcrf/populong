@@ -54,8 +54,9 @@ private const val TWO_PI = 6.2831855f
  * 「关卡模式」opens the galaxy map, 「无尽模式」opens its mutator setup, and 「每日挑战」opens
  * the daily-challenge screen; each mode's [AppContainer.save] state (stars, streak) is reflected
  * directly on this screen. 「⚙ 设置」opens the audio/haptics + about screen via [onOpenSettings],
- * 「🏆 成就」opens the achievement list via [onOpenAchievements], and 「📊 统计」opens the
- * career-stats screen via [onOpenStats].
+ * 「🏆 成就」opens the achievement list via [onOpenAchievements], 「📊 统计」opens the
+ * career-stats screen via [onOpenStats], and 「✦ 图鉴」opens the constellation gallery via
+ * [onOpenConstellations].
  */
 @Composable
 fun MainMenuScreen(
@@ -66,6 +67,7 @@ fun MainMenuScreen(
     onOpenSettings: () -> Unit,
     onOpenAchievements: () -> Unit,
     onOpenStats: () -> Unit,
+    onOpenConstellations: () -> Unit,
 ) {
     val save by container.save.save.collectAsState()
     val totalStars = remember(save) { save.levels.values.sumOf { it.stars } }
@@ -207,6 +209,7 @@ fun MainMenuScreen(
                 MenuIconButton(label = "⚙ 设置", onClick = { playAndGo(onOpenSettings) })
                 MenuIconButton(label = "🏆 成就", onClick = { playAndGo(onOpenAchievements) })
                 MenuIconButton(label = "📊 统计", onClick = { playAndGo(onOpenStats) })
+                MenuIconButton(label = "✦ 图鉴", onClick = { playAndGo(onOpenConstellations) })
             }
         }
     }

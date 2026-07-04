@@ -60,9 +60,9 @@ class BubbleGrid(
 
     /**
      * Cells structurally attached to the backdrop: reachable from an occupied cell in
-     * [ceilingRow] by BFS over occupied neighbors, plus every [Bubble.Chained] cell and its whole
-     * connected component (a locked chain bolts its cluster to the backdrop even when it hangs
-     * disconnected from the ceiling).
+     * [ceilingRow] by BFS over occupied neighbors, plus every [Bubble.Chained] and [Bubble.Wormhole]
+     * cell and its whole connected component (a locked chain or a wormhole portal bolts its cluster
+     * to the backdrop even when it hangs disconnected from the ceiling).
      */
     fun anchored(): Set<GridPos> {
         val anchored = HashSet<GridPos>()
@@ -76,7 +76,7 @@ class BubbleGrid(
         drainBfs(queue, anchored)
 
         for ((pos, bubble) in cells) {
-            if (bubble is Bubble.Chained && anchored.add(pos)) {
+            if ((bubble is Bubble.Chained || bubble is Bubble.Wormhole) && anchored.add(pos)) {
                 queue.add(pos)
             }
         }

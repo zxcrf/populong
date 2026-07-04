@@ -22,6 +22,11 @@ enum class Archetype { CHECKER, ARCHES, DIAMONDS, BLOBS, FORTRESS, SPIRAL }
  * @property chainDensity fraction eligible for [com.populong.bubbleshooter.core.grid.Bubble.Chained].
  * @property supernovaDensity per-cell probability a colored cell is promoted to a
  *   [com.populong.bubbleshooter.core.grid.Bubble.Supernova] (0 before the late-campaign rollout gate).
+ * @property pulsarDensity per-cell probability a colored cell becomes a lit
+ *   [com.populong.bubbleshooter.core.grid.Bubble.Pulsar] (0 before its gate; capped per level).
+ * @property wormholePairChance chance this level carries one [com.populong.bubbleshooter.core.grid.Bubble.Wormhole]
+ *   pair (0 before its gate).
+ * @property gravityWellCap max [com.populong.bubbleshooter.core.grid.Bubble.GravityWell]s planted (0 before its gate).
  * @property shotsSlack spare shots added on top of the bubble-count estimate.
  * @property archetype the silhouette to grow into.
  * @property isBoss whether this is a galaxy-capping fortress level.
@@ -38,6 +43,9 @@ data class GenParams(
     val fogDensity: Float,
     val chainDensity: Float,
     val supernovaDensity: Float,
+    val pulsarDensity: Float,
+    val wormholePairChance: Float,
+    val gravityWellCap: Int,
     val shotsSlack: Int,
     val archetype: Archetype,
     val isBoss: Boolean,
@@ -96,6 +104,13 @@ fun paramsFor(level: Int): GenParams {
     // capped to two per level by the generator, unscaled by galaxy theme or boss status.
     val supernovaDensity = if (level >= SUPERNOVA_GATE) 0.01f else 0f
 
+    // Three cosmic mechanics, each a flat late-campaign spice gated at a fixed level: pulsars blink
+    // in from 120, wormhole pairs from 160, gravity wells from 220. Each pass consumes no RNG below
+    // its gate, so earlier levels stay byte-for-byte unchanged.
+    val pulsarDensity = if (level >= PULSAR_GATE) 0.02f else 0f
+    val wormholePairChance = if (level >= WORMHOLE_GATE) 0.30f else 0f
+    val gravityWellCap = if (level >= GRAVITY_WELL_GATE) 2 else 0
+
     val shotsSlack = (6.0 - 4.0 * t).roundToInt().coerceIn(2, 6)
 
     val bombEvery = when {
@@ -123,6 +138,9 @@ fun paramsFor(level: Int): GenParams {
         fogDensity = fogDensity,
         chainDensity = chainDensity,
         supernovaDensity = supernovaDensity,
+        pulsarDensity = pulsarDensity,
+        wormholePairChance = wormholePairChance,
+        gravityWellCap = gravityWellCap,
         shotsSlack = shotsSlack,
         archetype = archetype,
         isBoss = isBoss,
@@ -172,3 +190,12 @@ private const val DESCENT_GATE = 300
 
 /** First generated level that may carry supernovae; the late-campaign rollout gate. */
 const val SUPERNOVA_GATE = 90
+
+/** First generated level that may carry [com.populong.bubbleshooter.core.grid.Bubble.Pulsar]s. */
+const val PULSAR_GATE = 120
+
+/** First generated level that may carry a [com.populong.bubbleshooter.core.grid.Bubble.Wormhole] pair. */
+const val WORMHOLE_GATE = 160
+
+/** First generated level that may carry [com.populong.bubbleshooter.core.grid.Bubble.GravityWell]s. */
+const val GRAVITY_WELL_GATE = 220

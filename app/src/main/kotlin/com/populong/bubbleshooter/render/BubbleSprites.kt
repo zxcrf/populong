@@ -41,7 +41,14 @@ class BubbleSprites(private val radiusPx: Float) {
         BubbleColor.all.associateWith { chainedSprite(Neon.bubbleColor(it)) }
     private val supernova: Map<BubbleColor, ImageBitmap> =
         BubbleColor.all.associateWith { supernovaSprite(Neon.bubbleColor(it)) }
+    private val pulsarLit: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { pulsarSprite(Neon.bubbleColor(it), lit = true) }
+    private val pulsarUnlit: Map<BubbleColor, ImageBitmap> =
+        BubbleColor.all.associateWith { pulsarSprite(Neon.bubbleColor(it), lit = false) }
     private val stoneSprite: ImageBitmap = stoneSpriteImpl()
+    private val gravityWellSprite: ImageBitmap = gravityWellSpriteImpl()
+    private val wormholeSprite1: ImageBitmap = wormholeSpriteImpl(warm = false)
+    private val wormholeSprite2: ImageBitmap = wormholeSpriteImpl(warm = true)
     private val fogUnrevealedSprite: ImageBitmap = fogUnrevealedSpriteImpl()
     private val bombSprite: ImageBitmap = bombSpriteImpl()
     private val rainbowSprite: ImageBitmap = rainbowSpriteImpl()
@@ -54,6 +61,9 @@ class BubbleSprites(private val radiusPx: Float) {
         is Bubble.Fog -> if (b.revealed) fogRevealed.getValue(b.color) else fogUnrevealedSprite
         is Bubble.Chained -> chained.getValue(b.color)
         is Bubble.Supernova -> supernova.getValue(b.color)
+        is Bubble.Pulsar -> if (b.lit) pulsarLit.getValue(b.color) else pulsarUnlit.getValue(b.color)
+        Bubble.GravityWell -> gravityWellSprite
+        is Bubble.Wormhole -> if (b.pairId >= 2) wormholeSprite2 else wormholeSprite1
     }
 
     /** The baked sprite for a loaded/in-flight ammo [a]. */
@@ -293,6 +303,115 @@ class BubbleSprites(private val radiusPx: Float) {
             strokeWidth = strokeW,
             cap = StrokeCap.Round,
         )
+    }
+
+    /** A pulsar (脉冲星): lit shows a bright radiant core with a 4-point cross flare over its body
+     * color; unlit is a dim, faceted crystal that reads as dormant. */
+    private fun pulsarSprite(base: Color, lit: Boolean): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        if (lit) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(lighten(base, 0.5f).copy(alpha = 0.5f), base.copy(alpha = 0f)),
+                    center = c,
+                    radius = radiusPx * 1.7f,
+                ),
+                radius = radiusPx * 1.7f,
+                center = c,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color.White, lighten(base, 0.35f), base, darken(base, 0.25f)),
+                    center = c,
+                    radius = radiusPx * 1.05f,
+                ),
+                radius = radiusPx,
+                center = c,
+            )
+            drawCircle(color = Color.White.copy(alpha = 0.9f), radius = radiusPx * 0.32f, center = c)
+            val flare = Color.White.copy(alpha = 0.8f)
+            val len = radiusPx * 1.35f
+            val w = max(1f, radiusPx * 0.09f)
+            drawLine(flare, c - Offset(len, 0f), c + Offset(len, 0f), strokeWidth = w, cap = StrokeCap.Round)
+            drawLine(flare, c - Offset(0f, len), c + Offset(0f, len), strokeWidth = w, cap = StrokeCap.Round)
+        } else {
+            drawCircle(color = darken(base, 0.55f), radius = radiusPx, center = c)
+            drawCircle(
+                color = darken(base, 0.3f).copy(alpha = 0.6f),
+                radius = radiusPx,
+                center = c,
+                style = Stroke(width = max(1f, radiusPx * 0.08f)),
+            )
+            val facet = lighten(base, 0.2f).copy(alpha = 0.4f)
+            val fw = max(1f, radiusPx * 0.06f)
+            drawLine(
+                facet,
+                c + Offset(-radiusPx * 0.4f, -radiusPx * 0.5f),
+                c + Offset(radiusPx * 0.4f, radiusPx * 0.5f),
+                strokeWidth = fw,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                facet,
+                c + Offset(radiusPx * 0.4f, -radiusPx * 0.5f),
+                c + Offset(-radiusPx * 0.4f, radiusPx * 0.5f),
+                strokeWidth = fw,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(color = lighten(base, 0.3f).copy(alpha = 0.35f), radius = radiusPx * 0.18f, center = c)
+        }
+    }
+
+    /** A gravity well (引力井): a dark core ringed by two tilted elliptical accretion streaks. */
+    private fun gravityWellSpriteImpl(): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFF0A0A12), Color(0xFF1B1030), Color(0xFF06060B)),
+                center = c,
+                radius = radiusPx,
+            ),
+            radius = radiusPx,
+            center = c,
+        )
+        val strokeW = max(1f, radiusPx * 0.09f)
+        // A wide/flat and a tall/narrow accretion ring framing the dark core.
+        drawOval(
+            color = Color(0xFF6C4BD6).copy(alpha = 0.75f),
+            topLeft = c + Offset(-radiusPx * 1.15f, -radiusPx * 0.45f),
+            size = Size(radiusPx * 2.3f, radiusPx * 0.9f),
+            style = Stroke(width = strokeW),
+        )
+        drawOval(
+            color = Color(0xFF35E0F2).copy(alpha = 0.55f),
+            topLeft = c + Offset(-radiusPx * 0.5f, -radiusPx * 1.1f),
+            size = Size(radiusPx * 1.0f, radiusPx * 2.2f),
+            style = Stroke(width = strokeW * 0.8f),
+        )
+        drawCircle(color = Color.Black.copy(alpha = 0.9f), radius = radiusPx * 0.4f, center = c)
+    }
+
+    /** A wormhole (虫洞) portal: three nested swirling arcs in cyan/violet; the second pair id ([warm])
+     * shifts the palette warmer so the two ends read as distinct. */
+    private fun wormholeSpriteImpl(warm: Boolean): ImageBitmap = bake {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val inner = if (warm) Color(0xFFFFB25C) else Color(0xFF35E0F2)
+        val outer = if (warm) Color(0xFFFF5C8A) else Color(0xFF9A6BFF)
+        drawCircle(color = Color(0xFF0B0A1A), radius = radiusPx, center = c)
+        for (i in 0 until 3) {
+            val r = radiusPx * (0.9f - i * 0.26f)
+            val color = if (i % 2 == 0) outer else inner
+            drawArc(
+                color = color.copy(alpha = 0.85f),
+                startAngle = i * 120f,
+                sweepAngle = 260f,
+                useCenter = false,
+                topLeft = c - Offset(r, r),
+                size = Size(r * 2f, r * 2f),
+                style = Stroke(width = max(1f, radiusPx * 0.1f), cap = StrokeCap.Round),
+            )
+        }
+        drawCircle(color = inner.copy(alpha = 0.9f), radius = radiusPx * 0.14f, center = c)
     }
 
     private fun bombSpriteImpl(): ImageBitmap = bake {

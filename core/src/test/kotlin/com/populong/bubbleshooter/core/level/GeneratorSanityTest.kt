@@ -3,6 +3,7 @@ package com.populong.bubbleshooter.core.level
 import com.populong.bubbleshooter.core.grid.Bubble
 import com.populong.bubbleshooter.core.grid.BubbleColor
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class GeneratorSanityTest {
@@ -62,6 +63,15 @@ class GeneratorSanityTest {
                         }
                         assertTrue(reachable, "level $n supernova $pos has no same-color neighbor")
                     }
+                    is Bubble.Pulsar ->
+                        assertTrue(n >= PULSAR_GATE, "level $n has a pulsar before the gate at $pos")
+                    is Bubble.GravityWell -> {
+                        assertTrue(n >= GRAVITY_WELL_GATE, "level $n has a well before the gate at $pos")
+                        assertTrue(pos.row != bottom, "level $n has a well on the bottom row at $pos")
+                        assertTrue(pos.row != grid.ceilingRow, "level $n has a well on the ceiling row at $pos")
+                    }
+                    is Bubble.Wormhole ->
+                        assertTrue(n >= WORMHOLE_GATE, "level $n has a wormhole before the gate at $pos")
                     else -> Unit
                 }
             }
@@ -69,6 +79,35 @@ class GeneratorSanityTest {
             // Supernovae are hard-capped per level.
             val supernovae = grid.cells.values.count { it is Bubble.Supernova }
             assertTrue(supernovae <= 2, "level $n has $supernovae supernovae (cap is 2)")
+
+            // Pulsars are hard-capped per level.
+            val pulsars = grid.cells.values.count { it is Bubble.Pulsar }
+            assertTrue(pulsars <= 4, "level $n has $pulsars pulsars (cap is 4)")
+
+            // Gravity wells: at most 2, never adjacent to each other.
+            val wells = grid.cells.filterValues { it is Bubble.GravityWell }.keys
+            assertTrue(wells.size <= 2, "level $n has ${wells.size} gravity wells (cap is 2)")
+            for (a in wells) for (b in wells) {
+                if (a != b) assertTrue(b !in grid.neighbors(a), "level $n has adjacent wells $a,$b")
+            }
+
+            // Wormholes: at most one pair, each pairId appearing exactly twice, portals on opposite
+            // halves of the field, in mid rows, never adjacent to each other.
+            val wormholes = grid.cells.filterValues { it is Bubble.Wormhole }
+            val byPair = wormholes.entries.groupBy { (it.value as Bubble.Wormhole).pairId }
+            assertTrue(byPair.size <= 1, "level $n has ${byPair.size} wormhole pairs (expected at most 1)")
+            for ((pairId, portals) in byPair) {
+                assertEquals(2, portals.size, "level $n wormhole pairId $pairId has ${portals.size} portals")
+                val cols = portals.map { it.key.col }.sorted()
+                assertTrue(cols[0] < 4 && cols[1] >= 4, "level $n wormhole pair not on opposite halves: $cols")
+                val rows = portals.map { it.key.row }
+                assertTrue(
+                    rows.all { it != grid.ceilingRow && it != bottom },
+                    "level $n wormhole pair not in mid rows: $rows",
+                )
+                val (a, b) = portals.map { it.key }
+                assertTrue(b !in grid.neighbors(a), "level $n wormhole portals $a,$b are adjacent")
+            }
 
             // Scoring and budget.
             val stars = spec.starThresholds
@@ -83,6 +122,7 @@ class GeneratorSanityTest {
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
         is Bubble.Supernova -> bubble.color
-        Bubble.Stone -> null
+        is Bubble.Pulsar -> bubble.color
+        Bubble.Stone, Bubble.GravityWell, is Bubble.Wormhole -> null
     }
 }

@@ -213,6 +213,8 @@ class GameSessionHolder(
                     haptics.heavy()
                 }
 
+                is GameEvent.PulsarToggled -> Unit // visual ping handled by EffectsController
+
                 is GameEvent.Fell -> sfx.play(Sfx.FALL)
                 is GameEvent.BankShot -> sfx.play(Sfx.BANK)
                 is GameEvent.IceCracked -> sfx.play(Sfx.ICE_CRACK)

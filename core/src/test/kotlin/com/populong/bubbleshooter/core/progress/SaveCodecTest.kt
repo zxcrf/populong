@@ -27,11 +27,34 @@ class SaveCodecTest {
             ),
             daily = DailyState(lastCompletedEpochDay = 5, streak = 3, completedDays = setOf(1L, 2L, 3L, 5L)),
             settings = GameSettings(sound = false, haptics = true),
+            stardust = 1234,
+            unlockedConstellations = setOf("dipper", "lyra"),
         )
 
         val decoded = SaveCodec.decode(SaveCodec.encode(save))
 
         assertEquals(save, decoded)
+    }
+
+    @Test
+    fun `old save JSON without stardust fields decodes to stardust defaults, and new fields round trip`() {
+        val oldJson = """
+            {
+              "version": 1,
+              "levels": {},
+              "endlessHighs": [],
+              "achievements": [],
+              "stats": {},
+              "daily": {},
+              "settings": {}
+            }
+        """.trimIndent()
+        val decoded = SaveCodec.decode(oldJson)
+        assertEquals(0L, decoded.stardust)
+        assertEquals(emptySet(), decoded.unlockedConstellations)
+
+        val withStardust = SaveData(stardust = 5000, unlockedConstellations = setOf("orion"))
+        assertEquals(withStardust, SaveCodec.decode(SaveCodec.encode(withStardust)))
     }
 
     @Test

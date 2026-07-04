@@ -66,6 +66,54 @@ class LevelDslTest {
     }
 
     @Test
+    fun `the cosmic tokens parse to gravity wells, wormholes and pulsars`() {
+        val spec = level(
+            id = 11,
+            palette = 4,
+            shots = 20,
+            star1 = 100, star2 = 200, star3 = 300,
+            grid = """
+                V UR W1 R B G Y .
+                W1 UB R . R B G
+            """,
+        )
+        val grid = spec.initialGrid
+        assertEquals(Bubble.GravityWell, grid.bubbleAt(pos(0, 0)))
+        assertEquals(Bubble.Pulsar(BubbleColor.RED, lit = true), grid.bubbleAt(pos(0, 1)))
+        assertEquals(Bubble.Wormhole(1), grid.bubbleAt(pos(0, 2)))
+        assertEquals(Bubble.Wormhole(1), grid.bubbleAt(pos(1, 0)))
+        assertEquals(Bubble.Pulsar(BubbleColor.BLUE, lit = true), grid.bubbleAt(pos(1, 1)))
+    }
+
+    @Test
+    fun `a wormhole pairId appearing only once is rejected`() {
+        val ex = assertFailsWith<IllegalArgumentException> {
+            level(
+                id = 12, palette = 4, shots = 5, star1 = 1, star2 = 2, star3 = 3,
+                grid = """
+                    W1 R B G Y R B G
+                    . . . . . . .
+                """,
+            )
+        }
+        assertTrue("pairId 1" in ex.message!!, "message names the unpaired portal: ${ex.message}")
+    }
+
+    @Test
+    fun `a malformed wormhole token is rejected`() {
+        val ex = assertFailsWith<IllegalArgumentException> {
+            level(
+                id = 13, palette = 4, shots = 5, star1 = 1, star2 = 2, star3 = 3,
+                grid = """
+                    W3 R B G Y R B G
+                    . . . . . . .
+                """,
+            )
+        }
+        assertTrue("W3" in ex.message!!, "message names the offending token: ${ex.message}")
+    }
+
+    @Test
     fun `a supernova wrapping an out-of-palette color is rejected`() {
         val ex = assertFailsWith<IllegalArgumentException> {
             level(

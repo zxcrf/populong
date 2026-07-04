@@ -70,7 +70,10 @@ object GreedyBot {
         // Landing cells depend only on the grid and direction, so compute them once for both ammos.
         val landings = ArrayList<Landing>(AIM_DIRS.size)
         for (dir in AIM_DIRS) {
-            val cell = AimPath.compute(grid, ceilingY, origin, dir, maxBounces = 2).landingCell ?: continue
+            val cell = AimPath.compute(
+                grid, ceilingY, origin, dir, maxBounces = 2,
+                speed = config.projectileSpeed, gravityStrength = config.gravityWellStrength,
+            ).landingCell ?: continue
             landings.add(Landing(dir, cell))
         }
         if (landings.isEmpty()) return fire(state, Vec2(0f, -1f), swap = false)
@@ -177,11 +180,13 @@ object GreedyBot {
         return visited
     }
 
-    /** Whether [bubble] would match [color] this turn (colored/supernova, or fog about to reveal). */
+    /** Whether [bubble] would match [color] this turn (colored/supernova/lit-pulsar, or fog about to
+     * reveal). An unlit pulsar is valued like a [Bubble.Stone] — inert, no match. */
     private fun sameTarget(bubble: Bubble?, color: BubbleColor): Boolean = when (bubble) {
         is Bubble.Colored -> bubble.color == color
         is Bubble.Supernova -> bubble.color == color
         is Bubble.Fog -> bubble.color == color
+        is Bubble.Pulsar -> bubble.lit && bubble.color == color
         else -> false
     }
 

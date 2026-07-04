@@ -388,6 +388,122 @@ class GameEngineTest {
         assertEquals(ea.filterIsInstance<GameEvent.SupernovaChained>(), eb.filterIsInstance<GameEvent.SupernovaChained>())
     }
 
+    // --- cosmic mechanics ---------------------------------------------------------------------
+
+    @Test
+    fun `a detached gravity well falls like a stone when its support pops`() {
+        val mode = level(
+            mapOf(
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Colored(RED),
+                pos(1, 5) to Bubble.GravityWell, // hangs from (0,5)
+                pos(0, 8) to Bubble.Colored(GREEN),
+            ),
+        )
+        val (s, events) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+
+        assertEquals(setOf(pos(0, 3), pos(0, 4), pos(0, 5)), events.only<GameEvent.Popped>().cells)
+        assertTrue(pos(1, 5) in events.only<GameEvent.Fell>().cells, "the unsupported well should fall")
+        assertNull(s.grid.bubbleAt(pos(1, 5)))
+    }
+
+    @Test
+    fun `a bomb clears a gravity well but a shockwave does not`() {
+        // Bomb: the well within radius is removed.
+        val bombMode = level(
+            mapOf(
+                pos(0, 3) to Bubble.GravityWell,
+                pos(0, 0) to Bubble.Colored(RED), // keeps grid non-empty
+            ),
+        )
+        val (bs, be) = fire(start(bombMode, current = Ammo.Bomb))
+        assertTrue(pos(0, 3) in be.only<GameEvent.BombExploded>().cells)
+        assertNull(bs.grid.bubbleAt(pos(0, 3)))
+
+        // Shockwave: a well within a supernova's radius is left in place.
+        val novaMode = level(
+            mapOf(
+                pos(0, 0) to Bubble.Colored(GREEN), // far survivor
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Supernova(RED),
+                pos(0, 6) to Bubble.GravityWell, // within radius 2 of the nova
+            ),
+        )
+        val (ns, ne) = fire(start(novaMode, current = Ammo.ColorAmmo(RED)))
+        ne.only<GameEvent.SupernovaChained>()
+        assertEquals(Bubble.GravityWell, ns.grid.bubbleAt(pos(0, 6)), "a shockwave must not clear a well")
+    }
+
+    @Test
+    fun `a wormhole is indestructible and never blocks winning`() {
+        // A bomb next to a wormhole leaves the portal in place, and a fully-cleared board still wins
+        // even though the two portals remain.
+        val mode = level(
+            mapOf(
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Colored(RED),
+                pos(0, 0) to Bubble.Wormhole(1),
+                pos(0, 8) to Bubble.Wormhole(1),
+            ),
+            shots = 5,
+        )
+        val (s, events) = fire(start(mode, current = Ammo.ColorAmmo(RED)))
+
+        assertEquals(setOf(pos(0, 3), pos(0, 4), pos(0, 5)), events.only<GameEvent.Popped>().cells)
+        assertTrue(events.any { it is GameEvent.Won }, "board with only wormholes left must win")
+        assertEquals(Phase.WON, s.phase)
+        assertEquals(Bubble.Wormhole(1), s.grid.bubbleAt(pos(0, 0)))
+        assertEquals(Bubble.Wormhole(1), s.grid.bubbleAt(pos(0, 8)))
+    }
+
+    @Test
+    fun `a lit pulsar matches and pops, an unlit one is inert`() {
+        val litMode = level(
+            mapOf(
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Pulsar(RED, lit = true),
+                pos(0, 0) to Bubble.Colored(GREEN), // survivor
+            ),
+        )
+        val (litS, litE) = fire(start(litMode, current = Ammo.ColorAmmo(RED)))
+        assertTrue(pos(0, 5) in litE.only<GameEvent.Popped>().cells, "a lit pulsar pops in a match")
+        assertNull(litS.grid.bubbleAt(pos(0, 5)))
+
+        val unlitMode = level(
+            mapOf(
+                pos(0, 3) to Bubble.Colored(RED),
+                pos(0, 5) to Bubble.Pulsar(RED, lit = false),
+                pos(0, 0) to Bubble.Colored(GREEN),
+            ),
+        )
+        val (unlitS, unlitE) = fire(start(unlitMode, current = Ammo.ColorAmmo(RED)))
+        assertTrue(unlitE.none { it is GameEvent.Popped }, "an unlit pulsar is inert; only a 2-group forms")
+        assertEquals(Bubble.Pulsar(RED, lit = false), unlitS.grid.bubbleAt(pos(0, 5)))
+    }
+
+    @Test
+    fun `a pulsar toggles deterministically on its phase boundary`() {
+        // pos(0,4).packed = 4, offset = floorMod(4*37, 240) = 148, so it flips when ticks = 92.
+        val mode = level(mapOf(pos(0, 4) to Bubble.Pulsar(RED, lit = true)))
+        var s = engine.initialState(mode, seed = 1L)
+
+        var toggleTick = -1L
+        var toggled: GameEvent.PulsarToggled? = null
+        while (s.ticks < 240 && toggled == null) {
+            val r = engine.step(s)
+            s = r.state
+            val t = r.events.filterIsInstance<GameEvent.PulsarToggled>().firstOrNull()
+            if (t != null) {
+                toggled = t
+                toggleTick = s.ticks
+            }
+        }
+        assertEquals(92L, toggleTick, "the pulsar must flip exactly on its computed boundary tick")
+        assertEquals(false, toggled!!.lit, "starting lit, the first flip turns it off")
+        assertTrue(pos(0, 4) in toggled.cells)
+        assertEquals(Bubble.Pulsar(RED, lit = false), s.grid.bubbleAt(pos(0, 4)))
+    }
+
     // --- determinism --------------------------------------------------------------------------
 
     @Test
@@ -548,7 +664,8 @@ class GameEngineTest {
                 is Bubble.Fog -> it.color
                 is Bubble.Chained -> it.color
                 is Bubble.Supernova -> it.color
-                Bubble.Stone -> null
+                is Bubble.Pulsar -> it.color
+                Bubble.Stone, Bubble.GravityWell, is Bubble.Wormhole -> null
             }
         }.toSet()
         for (ammo in listOf(s.currentAmmo, s.nextAmmo)) {

@@ -139,10 +139,17 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         }
         s = s.copy(ticks = s.ticks + 1)
 
+        // Pulsars blink on a fixed tick cadence, independent of phase — cheap O(cells) scan that only
+        // does work on the ticks where a pulsar actually crosses its phase boundary.
+        s = togglePulsars(s, events)
+
         if (s.phase != Phase.FLYING) return StepResult(s, events)
 
         val projectile = s.projectile!!
-        val outcome = ProjectileSim.step(s.grid, s.ceilingY, 2f * s.grid.evenCols, projectile, config.TICK)
+        val outcome = ProjectileSim.step(
+            s.grid, s.ceilingY, 2f * s.grid.evenCols, projectile, config.TICK,
+            config.gravityWellStrength, config.projectileSpeed,
+        )
         return when (outcome) {
             is SimOutcome.Moving -> {
                 val moved = outcome.projectile
@@ -172,7 +179,10 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         var didPop = false
 
         if (ammo is Ammo.Bomb) {
-            val removed = grid.cells.keys.filterTo(HashSet()) { hexDistance(cell, it) <= config.bombRadius }
+            // A bomb clears everything in range except indestructible wormhole portals.
+            val removed = grid.cells.keys.filterTo(HashSet()) {
+                hexDistance(cell, it) <= config.bombRadius && grid.bubbleAt(it) !is Bubble.Wormhole
+            }
             grid = grid.without(removed)
             events.add(GameEvent.Landed(cell))
             events.add(GameEvent.BombExploded(removed))
@@ -288,10 +298,13 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             }
         }
 
-        // Win / lose.
+        // Win / lose. Stones, gravity wells and wormholes are permanent field furniture — like
+        // stones, wells and (indestructible) wormholes never have to be cleared to win.
         val isLevelMode = state.mode is GameMode.Level || state.mode is GameMode.Daily
-        val hasNonStone = grid.cells.values.any { it !is Bubble.Stone }
-        if (isLevelMode && !hasNonStone) {
+        val hasClearable = grid.cells.values.any {
+            it !is Bubble.Stone && it !is Bubble.GravityWell && it !is Bubble.Wormhole
+        }
+        if (isLevelMode && !hasClearable) {
             val clearBonus = max(0, state.shotsLeft) * config.clearBonusPerRemainingShot
             val finalScore = score + clearBonus
             val stars = scoring.starsFor(finalScore, thresholdsOf(state.mode))
@@ -333,6 +346,34 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             ),
             events,
         )
+    }
+
+    /**
+     * Flips every pulsar that crosses its blink boundary this tick, returning the updated state and
+     * appending a [GameEvent.PulsarToggled] per resulting lit-state. A pulsar at `pos` toggles on the
+     * ticks where `(ticks + floorMod(pos.packed * 37, PULSAR_PERIOD))` is a multiple of
+     * [PULSAR_PERIOD], so its blink is a pure, replayable function of the tick counter.
+     */
+    private fun togglePulsars(state: GameState, events: MutableList<GameEvent>): GameState {
+        var grid = state.grid
+        var litCells: HashSet<GridPos>? = null
+        var unlitCells: HashSet<GridPos>? = null
+        for ((pos, bubble) in state.grid.cells) {
+            if (bubble !is Bubble.Pulsar) continue
+            val offset = Math.floorMod(pos.packed * 37, PULSAR_PERIOD)
+            if (Math.floorMod(state.ticks + offset, PULSAR_PERIOD.toLong()) != 0L) continue
+            val flipped = !bubble.lit
+            grid = grid.with(pos, bubble.copy(lit = flipped))
+            if (flipped) {
+                (litCells ?: HashSet<GridPos>().also { litCells = it }).add(pos)
+            } else {
+                (unlitCells ?: HashSet<GridPos>().also { unlitCells = it }).add(pos)
+            }
+        }
+        if (litCells == null && unlitCells == null) return state
+        litCells?.let { events.add(GameEvent.PulsarToggled(it, lit = true)) }
+        unlitCells?.let { events.add(GameEvent.PulsarToggled(it, lit = false)) }
+        return state.copy(grid = grid)
     }
 
     private fun levelDescent(spec: LevelSpec, shotsFired: Int, events: MutableList<GameEvent>): Int {
@@ -431,7 +472,8 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
         is Bubble.Supernova -> bubble.color
-        Bubble.Stone -> null
+        is Bubble.Pulsar -> bubble.color
+        Bubble.Stone, Bubble.GravityWell, is Bubble.Wormhole -> null
     }
 
     // --- supernova shockwave ---------------------------------------------------------------------
@@ -489,5 +531,10 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         val z = pos.row
         val y = -x - z
         return Triple(x, y, z)
+    }
+
+    private companion object {
+        /** Pulsar blink cadence in ticks: each pulsar flips its lit state every this many ticks. */
+        const val PULSAR_PERIOD = 240
     }
 }

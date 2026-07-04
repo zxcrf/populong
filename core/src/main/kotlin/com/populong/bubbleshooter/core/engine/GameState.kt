@@ -59,6 +59,9 @@ data class GameState(
         val dir = aimDir ?: return null
         val bounces = if (precision) config.aimBouncesPrecision else config.aimBouncesNormal
         val maxLength = config.aimLength * (if (precision) 1.5f else 1f)
-        return AimPath.compute(grid, ceilingY, shooterOrigin, dir, bounces, maxLength)
+        return AimPath.compute(
+            grid, ceilingY, shooterOrigin, dir, bounces, maxLength,
+            config.projectileSpeed, config.gravityWellStrength,
+        )
     }
 }

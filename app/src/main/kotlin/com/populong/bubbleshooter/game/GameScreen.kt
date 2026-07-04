@@ -70,6 +70,7 @@ import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.mode.Mutator
 import com.populong.bubbleshooter.core.progress.Achievements
 import com.populong.bubbleshooter.core.progress.CareerStats
+import com.populong.bubbleshooter.core.progress.earnStardust
 import com.populong.bubbleshooter.core.progress.withDailyCompleted
 import com.populong.bubbleshooter.core.progress.withEndlessScore
 import com.populong.bubbleshooter.core.progress.withLevelResult
@@ -87,6 +88,9 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.isActive
 
 private const val PRECISION_HOLD_MS = 350L
+
+/** Flat stardust bonus awarded for winning a level run, on top of the per-bubble-dropped rate. */
+private const val LEVEL_WIN_STARDUST_BONUS = 25L
 
 /** ~0.5 degrees, in radians; the minimum aim-direction change before re-enqueuing [GameInput.AimAt]. */
 private const val MIN_AIM_ANGLE_CHANGE_RAD = 0.008727f
@@ -186,6 +190,12 @@ fun GameScreen(mode: GameMode, container: AppContainer, onExit: () -> Unit, onNe
                     if (newlyEarned.isNotEmpty()) {
                         finalSave = finalSave.copy(achievements = finalSave.achievements + newlyEarned)
                     }
+
+                    // Stardust: 1 per bubble dropped this run, plus a flat bonus for winning a level.
+                    val stardustEarned = holder.sessionStats.bubblesDropped +
+                        if (mode is GameMode.Level && won) LEVEL_WIN_STARDUST_BONUS else 0L
+                    finalSave = finalSave.earnStardust(stardustEarned)
+
                     finalSave
                 }
             }

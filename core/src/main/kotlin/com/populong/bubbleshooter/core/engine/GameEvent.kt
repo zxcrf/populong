@@ -51,6 +51,12 @@ sealed interface GameEvent {
     /** [cells] of fog were revealed. */
     data class FogRevealed(val cells: Set<GridPos>) : GameEvent
 
+    /**
+     * One or more pulsars crossed their blink boundary this tick, all flipping to [lit]. Emitted for
+     * presentation only; the authoritative new state is already in the grid.
+     */
+    data class PulsarToggled(val cells: Set<GridPos>, val lit: Boolean) : GameEvent
+
     /** Fever mode began. */
     data object FeverStarted : GameEvent
 

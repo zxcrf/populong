@@ -19,6 +19,12 @@ data class GameConfig(
     // in sync with maxRows's default if that ever changes.
     val shooterDistance: Float = 21.784609f,
     val bombRadius: Int = 2,
+    /**
+     * Gravitational constant G for [com.populong.bubbleshooter.core.grid.Bubble.GravityWell]: each
+     * well pulls an in-flight projectile with acceleration `G * dir / max(d^2, 4)` per substep. Both
+     * the real simulation and the aim preview read this same value, so a curved shot previews true.
+     */
+    val gravityWellStrength: Float = 40f,
     val popBase: Long = 10L,
     val fallBase: Long = 20L,
     val bankBonusPerBounce: Long = 50L,

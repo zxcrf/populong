@@ -20,6 +20,10 @@ import com.populong.bubbleshooter.core.grid.GridPos
  * - `F`+color a hidden [Bubble.Fog] (`revealed = false`).
  * - `C`+color a [Bubble.Chained] cell.
  * - `N`+color (e.g. `NR`) a [Bubble.Supernova] — matches as its color and detonates a shockwave when popped.
+ * - `U`+color (e.g. `UR`) a [Bubble.Pulsar] spawned lit — blinks on a fixed tick cadence.
+ * - `V` a [Bubble.GravityWell] (colorless; bends passing shots). `G` already denotes GREEN, so the
+ *   well uses `V`.
+ * - `W1` / `W2` a [Bubble.Wormhole] of pairId 1 / 2; each used pairId must appear exactly twice.
  *
  * Every color letter must lie inside the first [palette] entries; `palette = 4` admits `R B G Y`
  * only. Malformed input throws [IllegalArgumentException] naming the level [id], the offending row
@@ -59,6 +63,17 @@ fun level(
         }
     }
 
+    // Wormholes come in pairs: every pairId that appears must appear exactly twice.
+    val pairCounts = HashMap<Int, Int>()
+    for (bubble in cells.values) {
+        if (bubble is Bubble.Wormhole) pairCounts[bubble.pairId] = (pairCounts[bubble.pairId] ?: 0) + 1
+    }
+    for ((pairId, count) in pairCounts) {
+        require(count == 2) {
+            "level $id: wormhole pairId $pairId appears $count time(s), must appear exactly twice"
+        }
+    }
+
     return LevelSpec(
         id = id,
         evenCols = evenCols,
@@ -82,17 +97,27 @@ private fun parseToken(
 ): Bubble? {
     if (token == ".") return null
     if (token == "S") return Bubble.Stone
+    if (token == "V") return Bubble.GravityWell
 
     if (token.length == 1) {
         return Bubble.Colored(colorOf(id, row, token, token[0], palette, colors))
     }
     if (token.length == 2) {
+        // Wormholes carry a numeric pairId, not a color, so they are resolved before colorOf.
+        if (token[0] == 'W') {
+            val pairId = token[1].digitToIntOrNull()
+            require(pairId == 1 || pairId == 2) {
+                "level $id: row $row: wormhole token '$token' must be W1 or W2"
+            }
+            return Bubble.Wormhole(pairId!!)
+        }
         val color = colorOf(id, row, token, token[1], palette, colors)
         return when (token[0]) {
             'I' -> Bubble.Ice(color, hitsLeft = 2)
             'F' -> Bubble.Fog(color, revealed = false)
             'C' -> Bubble.Chained(color)
             'N' -> Bubble.Supernova(color)
+            'U' -> Bubble.Pulsar(color, lit = true)
             else -> throw IllegalArgumentException("level $id: row $row: unknown token '$token'")
         }
     }

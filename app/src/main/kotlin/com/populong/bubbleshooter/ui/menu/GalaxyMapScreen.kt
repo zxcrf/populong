@@ -283,6 +283,9 @@ private fun LevelPreviewDialog(
                 is Bubble.Fog -> kinds.add("迷雾")
                 is Bubble.Chained -> kinds.add("锁链")
                 is Bubble.Supernova -> kinds.add("超新星")
+                is Bubble.GravityWell -> kinds.add("引力井")
+                is Bubble.Wormhole -> kinds.add("虫洞")
+                is Bubble.Pulsar -> kinds.add("脉冲星")
                 is Bubble.Colored -> Unit
             }
         }

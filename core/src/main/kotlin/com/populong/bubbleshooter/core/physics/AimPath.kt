@@ -39,20 +39,30 @@ object AimPath {
         dir: Vec2,
         maxBounces: Int,
         maxLength: Float = Float.MAX_VALUE,
+        speed: Float = 60f,
+        gravityStrength: Float = 0f,
     ): AimResult {
         val fieldWidth = 2f * grid.evenCols
+        // Same field hazards and velocity-space the real simulation marches in, so a curved or
+        // through-portal preview lands exactly where a fired shot would.
+        val wells = if (gravityStrength != 0f) CollisionModel.gravityWells(grid) else emptyList()
+        val wormholes = CollisionModel.wormholePairs(grid)
+        val speedCap = 1.5f * speed
+
         val points = ArrayList<Vec2>()
         points.add(origin)
 
         var pos = origin
-        var vel = dir.normalized()
+        var vel = dir.normalized() * speed
         var bounces = 0
+        var teleports = 0
         var traveled = 0f
         var guard = 0
 
         while (guard++ < GUARD_LIMIT) {
             val prev = pos
-            val (nextPos, nextVel, bounced) = CollisionModel.advance(pos, vel, fieldWidth, CollisionModel.MAX_SUBSTEP)
+            val (nextPos, nextVel, bounced) =
+                CollisionModel.advance(pos, vel, fieldWidth, CollisionModel.MAX_SUBSTEP, wells, gravityStrength, speedCap)
 
             // Truncate before consuming this substep if it would cross the visible-length cap; the
             // cutoff point is the exact position where cumulative length equals maxLength.
@@ -74,6 +84,16 @@ object AimPath {
                 }
                 bounces++
                 points.add(pos)
+            }
+
+            if (wormholes.isNotEmpty()) {
+                val exit = CollisionModel.teleport(wormholes, prev, pos, vel, teleports)
+                if (exit != null) {
+                    points.add(pos) // portal entry
+                    pos = exit
+                    teleports++
+                    points.add(pos) // portal exit
+                }
             }
 
             val contact = CollisionModel.contactAt(grid, ceilingY, pos)

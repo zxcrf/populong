@@ -47,6 +47,11 @@ object LevelGenerator {
         val bubbles = HashMap<GridPos, Bubble>(kept.size * 2)
         for (pos in kept) bubbles[pos] = Bubble.Colored(colorOf.getValue(pos))
         sprinkleObstacles(bubbles, p, rng)
+        // Cosmic mechanics run before the final color floor: pulsars keep their cell's color, but
+        // wormholes and wells strip it, so the floor pass must see (and compensate for) the loss.
+        sprinklePulsars(bubbles, p, rng)
+        sprinkleWormholes(bubbles, p, rng)
+        sprinkleGravityWells(bubbles, p, rng)
         ensureFinalColorFloor(bubbles, colors, rng)
         sprinkleSupernovae(bubbles, p, rng)
 
@@ -242,7 +247,8 @@ object LevelGenerator {
         is Bubble.Fog -> bubble.color
         is Bubble.Chained -> bubble.color
         is Bubble.Supernova -> bubble.color
-        Bubble.Stone -> null
+        is Bubble.Pulsar -> bubble.color
+        Bubble.Stone, Bubble.GravityWell, is Bubble.Wormhole -> null
     }
 
     // --- obstacles -------------------------------------------------------------------------------
@@ -356,6 +362,82 @@ object LevelGenerator {
         return false
     }
 
+    // --- cosmic mechanics ------------------------------------------------------------------------
+
+    /**
+     * Blinks up to [PULSAR_CAP] plain colored cells into lit [Bubble.Pulsar]s of the same color, each
+     * admitted with probability [GenParams.pulsarDensity]. Color-preserving (a pulsar keeps its
+     * cell's inherent color), so it can run before the color floor without disturbing it. Below the
+     * gate ([GenParams.pulsarDensity] == 0) it consumes no RNG.
+     */
+    private fun sprinklePulsars(bubbles: HashMap<GridPos, Bubble>, p: GenParams, rng: Rng) {
+        if (p.pulsarDensity <= 0f) return
+        val order = bubbles.keys.sortedBy { it.packed }.toMutableList()
+        shuffle(order, rng)
+        var placed = 0
+        for (pos in order) {
+            if (placed >= PULSAR_CAP) break
+            val color = (bubbles[pos] as? Bubble.Colored)?.color ?: continue
+            if (rng.nextFloat() >= p.pulsarDensity) continue
+            bubbles[pos] = Bubble.Pulsar(color, lit = true)
+            placed++
+        }
+    }
+
+    /**
+     * With probability [GenParams.wormholePairChance] plants exactly one [Bubble.Wormhole] pair
+     * (pairId 1): one portal in the left half, one in the right half, both in mid rows (off the
+     * ceiling and bottom rows) and never adjacent to each other. Below the gate it consumes no RNG.
+     */
+    private fun sprinkleWormholes(bubbles: HashMap<GridPos, Bubble>, p: GenParams, rng: Rng) {
+        if (p.wormholePairChance <= 0f) return
+        if (rng.nextFloat() >= p.wormholePairChance) return
+
+        val minRow = bubbles.keys.minOf { it.row }
+        val maxRow = bubbles.keys.maxOf { it.row }
+        val midRows = (minRow + 1)..(maxRow - 1)
+        val half = EVEN_COLS / 2
+
+        val order = bubbles.keys.sortedBy { it.packed }.toMutableList()
+        shuffle(order, rng)
+        val left = order.firstOrNull { pos ->
+            bubbles[pos] is Bubble.Colored && pos.row in midRows && pos.col < half
+        } ?: return
+        val right = order.firstOrNull { pos ->
+            bubbles[pos] is Bubble.Colored && pos.row in midRows && pos.col >= half &&
+                pos !in neighborsOf(left)
+        } ?: return
+
+        bubbles[left] = Bubble.Wormhole(pairId = 1)
+        bubbles[right] = Bubble.Wormhole(pairId = 1)
+    }
+
+    /**
+     * Converts up to [GenParams.gravityWellCap] colored cells into [Bubble.GravityWell]s — never on
+     * the bottom occupied row and never adjacent to another well. Below the gate it consumes no RNG.
+     */
+    private fun sprinkleGravityWells(bubbles: HashMap<GridPos, Bubble>, p: GenParams, rng: Rng) {
+        if (p.gravityWellCap <= 0) return
+        // Roll an actual count in 0..cap, so wells are a genuine "at most 2" spice rather than always
+        // exactly two; this keeps the densest late levels comfortably clearable.
+        val target = rng.nextInt(p.gravityWellCap + 1)
+        if (target == 0) return
+        val order = bubbles.keys.sortedBy { it.packed }.toMutableList()
+        shuffle(order, rng)
+        val bottomRow = bubbles.keys.maxOf { it.row }
+        val ceilingRow = bubbles.keys.minOf { it.row }
+        val placed = ArrayList<GridPos>(target)
+        for (pos in order) {
+            if (placed.size >= target) break
+            // Never the ceiling row (a ceiling-anchored well can never be detached) nor the bottom row.
+            if (pos.row == bottomRow || pos.row == ceilingRow) continue
+            if (bubbles[pos] !is Bubble.Colored) continue
+            if (placed.any { pos in neighborsOf(it) }) continue
+            bubbles[pos] = Bubble.GravityWell
+            placed.add(pos)
+        }
+    }
+
     // --- helpers ---------------------------------------------------------------------------------
 
     /** Fisher–Yates over [list] driven by [rng], for deterministic ordering. */
@@ -383,6 +465,9 @@ object LevelGenerator {
 
     /** At most this many supernovae are planted in any generated level. */
     private const val SUPERNOVA_CAP = 2
+
+    /** At most this many pulsars are planted in any generated level. */
+    private const val PULSAR_CAP = 4
 
     private val ANCHOR_PROBE = Bubble.Colored(BubbleColor.RED)
 
