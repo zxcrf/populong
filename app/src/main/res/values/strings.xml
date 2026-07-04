@@ -1,19 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">泡泡龙</string>
-    <string name="endless_mode">无尽模式</string>
-    <string name="level_mode">关卡模式</string>
-    <string name="settings">设置</string>
-    <string name="resume">继续</string>
-    <string name="quit">退出</string>
-    <string name="retry">重试</string>
-    <string name="menu">菜单</string>
-    <string name="next_level">下一关</string>
-    <string name="game_over">游戏结束</string>
-    <string name="level_complete">恭喜过关</string>
-    <string name="score">得分</string>
-    <string name="high_score">最高分</string>
-    <string name="level">关卡 %d</string>
-    <string name="sound_on">音效: 开</string>
-    <string name="sound_off">音效: 关</string>
+    <string name="app_name">泡泡星河</string>
 </resources>
