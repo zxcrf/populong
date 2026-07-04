@@ -1,5 +1,7 @@
 package com.populong.bubbleshooter.game
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -373,13 +376,34 @@ private fun ResultOverlay(
 ) {
     val won = session.hud.phase == Phase.WON
     val showNext = won && onNext != null && mode is GameMode.Level && mode.spec.id < LevelCatalog.TOTAL
+
+    // Slide/fade the whole panel in on first composition (this overlay is only ever composed
+    // once per run-end, so `Unit` as the LaunchedEffect key is correct: it should fire exactly once).
+    var panelShown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { panelShown = true }
+    val panelOffsetY by animateFloatAsState(
+        targetValue = if (panelShown) 0f else 60f,
+        animationSpec = tween(durationMillis = 320),
+        label = "resultPanelOffset",
+    )
+    val panelAlpha by animateFloatAsState(
+        targetValue = if (panelShown) 1f else 0f,
+        animationSpec = tween(durationMillis = 320),
+        label = "resultPanelAlpha",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0x99000000)),
         contentAlignment = Alignment.Center,
     ) {
-        NeonPanel {
+        NeonPanel(
+            modifier = Modifier.graphicsLayer {
+                translationY = panelOffsetY
+                alpha = panelAlpha
+            },
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = if (won) "过关！" else "差一点…",
@@ -390,12 +414,23 @@ private fun ResultOverlay(
                 Spacer(modifier = Modifier.height(8.dp))
                 if (won) {
                     val stars = session.finalStars ?: 0
+                    var starsShown by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { starsShown = true }
                     Row {
                         repeat(3) { i ->
+                            val starScale by animateFloatAsState(
+                                targetValue = if (starsShown) 1f else 0f,
+                                animationSpec = tween(durationMillis = 300, delayMillis = i * 250),
+                                label = "star$i",
+                            )
                             Text(
                                 text = if (i < stars) "★" else "☆",
                                 color = Neon.gold,
                                 fontSize = 28.sp,
+                                modifier = Modifier.graphicsLayer {
+                                    scaleX = starScale
+                                    scaleY = starScale
+                                },
                             )
                         }
                     }

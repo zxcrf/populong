@@ -17,6 +17,7 @@ import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.physics.AimResult
 import com.populong.bubbleshooter.core.progress.CareerStats
 import com.populong.bubbleshooter.core.progress.accumulate
+import com.populong.bubbleshooter.fx.EffectsController
 import com.populong.bubbleshooter.haptics.HapticsManager
 
 /**
@@ -89,6 +90,9 @@ class GameSessionHolder(
     var lastEvents: List<GameEvent> = emptyList()
         private set
 
+    /** Particle bursts, score popups, and screen shake driven off [GameEvent]s; read by [GameRenderer]. */
+    val effects = EffectsController()
+
     /**
      * Career-stat deltas accrued so far *this run only* (starts at all-zero, never merged with
      * lifetime totals here). Folded into the saved lifetime [CareerStats] by the caller once the
@@ -138,6 +142,11 @@ class GameSessionHolder(
         }
         if (steps == MAX_STEPS_PER_FRAME) accumulator = 0f
 
+        // Uses the timeScale-scaled dt (not raw wall-clock time), so particles/shake/popups slow
+        // down together with the sim during precision-aim slow-mo — deliberate choice: slow-mo FX
+        // reads as "cinematic" rather than "sluggish" for this kind of arcade aiming.
+        effects.update(dt)
+
         lastEvents = frameEvents.toList()
         refreshHudIfChanged()
         frameTick.longValue++
@@ -165,6 +174,7 @@ class GameSessionHolder(
     private fun dispatch(events: List<GameEvent>) {
         if (events.isEmpty()) return
         sessionStats = sessionStats.accumulate(events)
+        effects.onEvents(events, latestState.grid, latestState.feverActive)
         for (event in events) {
             when (event) {
                 GameEvent.Fired -> {

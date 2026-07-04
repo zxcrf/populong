@@ -1,5 +1,6 @@
 package com.populong.bubbleshooter.render
 
+import android.graphics.Paint as AndroidPaint
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -8,6 +9,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.populong.bubbleshooter.core.engine.GameState
@@ -16,6 +19,7 @@ import com.populong.bubbleshooter.core.grid.GridGeometry
 import com.populong.bubbleshooter.core.grid.GridPos
 import com.populong.bubbleshooter.core.grid.Vec2
 import com.populong.bubbleshooter.core.physics.Projectile
+import com.populong.bubbleshooter.fx.EffectsController
 import com.populong.bubbleshooter.game.GameSessionHolder
 import com.populong.bubbleshooter.ui.theme.Neon
 import kotlin.math.roundToInt
@@ -35,23 +39,73 @@ data class FieldLayout(val scale: Float, val offsetX: Float, val offsetY: Float)
 /** Draws one frame of the play field: ceiling, grid, lose line, aim preview, projectile, shooter, fever glow. */
 object GameRenderer {
 
+    /** Cached paint for score-popup text; color/alpha/size are set per popup right before drawing. */
+    private val popupPaint = AndroidPaint().apply {
+        isAntiAlias = true
+        textAlign = AndroidPaint.Align.CENTER
+    }
+
+    /** Unit-space total upward drift of a score popup's text over its full lifetime. */
+    private const val POPUP_DRIFT_UNITS = 1.1f
+
+    /** Popup alpha starts fading once this fraction of its life has elapsed. */
+    private const val POPUP_FADE_START = 0.7f
+
     fun draw(scope: DrawScope, session: GameSessionHolder, sprites: BubbleSprites, layout: FieldLayout) {
         val state = session.latestState
         val ceilingY = state.ceilingY
+        val effects = session.effects
 
-        scope.drawCeiling(state, layout, ceilingY)
-        scope.drawGrid(state, sprites, layout, ceilingY)
-        scope.drawLoseLine(state, layout, ceilingY)
+        // Camera shake translates the whole field (grid/projectile/shooter/aim), but not the
+        // fever-glow edge vignette or the particle/popup FX layer drawn below, both of which read
+        // as screen-space HUD dressing rather than "world" content.
+        scope.withTransform({
+            translate(left = effects.shakeX * layout.scale, top = effects.shakeY * layout.scale)
+        }) {
+            drawCeiling(state, layout, ceilingY)
+            drawGrid(state, sprites, layout, ceilingY)
+            drawLoseLine(state, layout, ceilingY)
 
-        if (state.phase == Phase.AIMING) {
-            scope.drawAimPreview(session, sprites, layout, ceilingY)
+            if (state.phase == Phase.AIMING) {
+                drawAimPreview(session, sprites, layout, ceilingY)
+            }
+
+            state.projectile?.let { drawProjectile(it, sprites, layout, ceilingY) }
+            drawShooter(state, sprites, layout, ceilingY)
         }
-
-        state.projectile?.let { scope.drawProjectile(it, sprites, layout, ceilingY) }
-        scope.drawShooter(state, sprites, layout, ceilingY)
 
         if (state.feverActive) {
             scope.drawFeverGlow(session.frameTick.longValue)
+        }
+
+        scope.drawParticles(effects, layout, ceilingY)
+        scope.drawScorePopups(effects, layout, ceilingY)
+    }
+
+    private fun DrawScope.drawParticles(effects: EffectsController, layout: FieldLayout, ceilingY: Float) {
+        effects.particles.forEachAlive { x, y, alphaFrac, particleSize, colorArgb ->
+            val center = layout.toPx(x, y, ceilingY)
+            val radius = (particleSize * layout.scale * alphaFrac).coerceAtLeast(0.5f)
+            drawCircle(color = Color(colorArgb).copy(alpha = alphaFrac.coerceIn(0f, 1f)), radius = radius, center = center)
+        }
+    }
+
+    private fun DrawScope.drawScorePopups(effects: EffectsController, layout: FieldLayout, ceilingY: Float) {
+        for (popup in effects.popups) {
+            val progress = (popup.age / popup.lifeSec).coerceIn(0f, 1f)
+            val alphaFrac = if (progress > POPUP_FADE_START) {
+                (1f - (progress - POPUP_FADE_START) / (1f - POPUP_FADE_START)).coerceIn(0f, 1f)
+            } else {
+                1f
+            }
+            val driftPx = progress * POPUP_DRIFT_UNITS * layout.scale
+            val center = layout.toPx(popup.x, popup.y, ceilingY)
+
+            popupPaint.color = popup.colorArgb
+            popupPaint.alpha = (alphaFrac * 255f).roundToInt().coerceIn(0, 255)
+            popupPaint.textSize = layout.scale * 0.6f
+
+            drawContext.canvas.nativeCanvas.drawText(popup.text, center.x, center.y - driftPx, popupPaint)
         }
     }
 
