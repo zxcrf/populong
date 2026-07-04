@@ -10,6 +10,7 @@ import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.core.mode.Mutator
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -634,6 +635,96 @@ class GameEngineTest {
         val step2 = hotEngine.step(step1.state)
         assertEquals(0, step2.state.feverTicksLeft)
         assertTrue(step2.events.any { it is GameEvent.FeverEnded })
+    }
+
+    // --- comet (彗星 cosmic egg) ----------------------------------------------------------------
+
+    @Test
+    fun `a comet moves in a straight line each tick and despawns once fully off-field`() {
+        var s = engine.initialState(GameMode.Endless(emptySet()), seed = 1L)
+        val fieldWidth = 2f * s.grid.evenCols
+        s = s.copy(comet = Comet(pos = Vec2(fieldWidth - 0.5f, 5f), vel = Vec2(12f, 0f)))
+
+        val expectedNextX = s.comet!!.pos.x + 12f * s.config.TICK
+        s = engine.step(s).state
+        assertEquals(expectedNextX, s.comet!!.pos.x)
+        assertEquals(5f, s.comet!!.pos.y, "comet motion is a straight horizontal line in core; bob is render-only")
+
+        var guard = 0
+        while (s.comet != null && guard++ < 10_000) s = engine.step(s).state
+        assertNull(s.comet, "comet should despawn once it crosses the far edge")
+    }
+
+    @Test
+    fun `a comet spawns deterministically in Endless mode and eventually despawns off-field`() {
+        // A generous maxRows keeps this long a run from ending in Lost before the (~1-in-8 per
+        // shot, from shotsFired 6 on) comet spawn chance has had many tries to fire.
+        val roomyEngine = GameEngine(GameConfig(maxRows = 60))
+
+        fun run(): Pair<Int, Boolean> {
+            var s = roomyEngine.initialState(GameMode.Endless(emptySet()), seed = 99L)
+            var spawnedAtShot = -1
+            var guard = 0
+            while (spawnedAtShot < 0 && guard++ < 150) {
+                val (ns, events) = fire(s, engine = roomyEngine)
+                s = ns
+                if (events.any { it is GameEvent.CometSpawned }) spawnedAtShot = s.shotsFired
+            }
+            assertTrue(spawnedAtShot >= 0, "comet never spawned within the guard budget")
+            assertTrue(s.shotsFired >= 6, "comet must not spawn before shotsFired reaches 6")
+            assertNotNull(s.comet)
+
+            var despawnGuard = 0
+            while (s.comet != null && despawnGuard++ < 10_000) {
+                s = roomyEngine.step(s).state
+            }
+            return spawnedAtShot to (s.comet == null)
+        }
+        val (spawnA, despawnedA) = run()
+        val (spawnB, despawnedB) = run()
+        assertTrue(despawnedA, "comet must despawn once fully off-field")
+        assertEquals(spawnA, spawnB, "same seed must spawn the comet on the same shot")
+        assertEquals(despawnedA, despawnedB)
+    }
+
+    @Test
+    fun `a shot through the comet's path collects it, upgrading the very next shot's ammo`() {
+        val mode = level(mapOf(pos(0, 3) to Bubble.Colored(RED), pos(0, 5) to Bubble.Colored(RED), pos(0, 8) to Bubble.Colored(GREEN)))
+        var s0 = start(mode, current = Ammo.ColorAmmo(RED), next = Ammo.ColorAmmo(BLUE))
+        s0 = s0.copy(comet = Comet(pos = Vec2(s0.shooterOrigin.x, s0.shooterOrigin.y - 5f), vel = Vec2(1f, 0f)))
+
+        val (s1, e1) = fire(s0)
+        assertEquals(1, e1.filterIsInstance<GameEvent.CometHit>().size)
+        assertNull(s1.comet)
+        assertEquals(1, s1.cometHits)
+        assertEquals(Ammo.Rainbow, s1.currentAmmo, "the first (odd) hit upgrades the next fired shot to Rainbow")
+        assertTrue(e1.any { it is GameEvent.Popped }, "the comet pickup must not block the shot's own match")
+
+        var s2 = s1.copy(currentAmmo = Ammo.ColorAmmo(RED))
+        s2 = s2.copy(comet = Comet(pos = Vec2(s2.shooterOrigin.x, s2.shooterOrigin.y - 5f), vel = Vec2(-1f, 0f)))
+        val (s3, e3) = fire(s2)
+        assertEquals(1, e3.filterIsInstance<GameEvent.CometHit>().size)
+        assertEquals(2, s3.cometHits)
+        assertEquals(Ammo.Bomb, s3.currentAmmo, "the second (even) hit upgrades the next fired shot to Bomb")
+    }
+
+    @Test
+    fun `a comet never spawns in Level or Daily mode`() {
+        val levelMode = level(
+            mapOf(pos(0, 3) to Bubble.Colored(RED), pos(0, 5) to Bubble.Colored(RED), pos(0, 8) to Bubble.Colored(GREEN)),
+            shots = 500,
+        )
+        var s = start(levelMode, current = Ammo.ColorAmmo(RED))
+        var guard = 0
+        while (s.phase == Phase.AIMING && s.shotsFired < 15 && guard++ < 15) {
+            s = fire(s.copy(currentAmmo = Ammo.ColorAmmo(RED))).first
+            assertNull(s.comet, "comet must never spawn in Level mode")
+        }
+
+        val dailyMode = GameMode.Daily((levelMode as GameMode.Level).spec)
+        var d = start(dailyMode, current = Ammo.ColorAmmo(RED))
+        d = fire(d.copy(currentAmmo = Ammo.ColorAmmo(RED))).first
+        assertNull(d.comet, "comet must never spawn in Daily mode")
     }
 
     // --- ammo never dead ----------------------------------------------------------------------

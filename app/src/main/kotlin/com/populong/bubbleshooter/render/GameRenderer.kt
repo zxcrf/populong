@@ -13,8 +13,10 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import com.populong.bubbleshooter.core.engine.Comet
 import com.populong.bubbleshooter.core.engine.GameState
 import com.populong.bubbleshooter.core.engine.Phase
+import com.populong.bubbleshooter.core.grid.Bubble
 import com.populong.bubbleshooter.core.grid.GridGeometry
 import com.populong.bubbleshooter.core.grid.GridPos
 import com.populong.bubbleshooter.core.grid.Vec2
@@ -63,6 +65,16 @@ object GameRenderer {
     private const val SPLAT_DOT_DIST_START = 0.3f
     private const val SPLAT_DOT_DIST_GROWTH = 0.5f
 
+    /** Vertical bob amplitude/frequency of the comet's render-time-only wobble (core keeps its
+     * motion a strict straight line — see [Comet]). */
+    private const val COMET_BOB_AMPLITUDE = 0.4f
+    private const val COMET_BOB_FREQ = 0.08f
+
+    /** How many tail segments trail behind the comet's head, and how far the tail reaches, in
+     * bubble-radius units of [FieldLayout.scale]. */
+    private const val COMET_TAIL_SEGMENTS = 5
+    private const val COMET_TAIL_REACH = 1.8f
+
     fun draw(scope: DrawScope, session: GameSessionHolder, sprites: BubbleSprites, layout: FieldLayout) {
         val state = session.latestState
         val ceilingY = state.ceilingY
@@ -85,6 +97,7 @@ object GameRenderer {
             }
             drawFallingBubbles(effects, sprites, layout, ceilingY)
             drawLoseLine(state, layout, ceilingY)
+            state.comet?.let { drawComet(it, layout, ceilingY, state.ticks) }
 
             if (state.phase == Phase.AIMING) {
                 drawAimPreview(session, sprites, layout, ceilingY)
@@ -210,22 +223,32 @@ object GameRenderer {
         for ((pos, bubble) in state.grid.cells) {
             val worldX = GridGeometry.centerX(pos)
             val worldY = GridGeometry.centerY(pos.row)
-            val sprite = sprites.forBubble(bubble)
+            // Unrevealed fog picks one of BubbleSprites' two nebula-cloud arrangements by cell
+            // parity, so neighboring fog cells don't tile identically — forBubble alone has no
+            // cell context to do this, so it's special-cased here instead.
+            val unrevealedFog = bubble is Bubble.Fog && !bubble.revealed
+            val sprite = if (unrevealedFog) sprites.fogCloud(pos.packed) else sprites.forBubble(bubble)
             val spring = effects.springAt(pos)
+            // Unrevealed fog clouds slowly "breathe" — a cheap, allocation-free scale oscillation
+            // layered on top of any live impact spring; every other bubble kind is unaffected.
+            val breathe = if (unrevealedFog) 1f + 0.06f * sin(state.ticks * 0.015f + pos.packed) else 1f
 
-            // Default path (no live spring for this cell — the overwhelming majority every
-            // frame): unchanged from before, allocation-free.
-            if (spring == null) {
+            // Default path (no live spring and no breathing for this cell — the overwhelming
+            // majority every frame): unchanged from before, allocation-free.
+            if (spring == null && breathe == 1f) {
                 drawSpriteCentered(sprite, layout.toPx(worldX, worldY, ceilingY))
                 continue
             }
 
-            val center = layout.toPx(worldX + spring.ox, worldY + spring.oy, ceilingY)
-            if (spring.scale == 1f) {
+            val ox = spring?.ox ?: 0f
+            val oy = spring?.oy ?: 0f
+            val scale = (spring?.scale ?: 1f) * breathe
+            val center = layout.toPx(worldX + ox, worldY + oy, ceilingY)
+            if (scale == 1f) {
                 drawSpriteCentered(sprite, center)
             } else {
-                val w = sprite.width * spring.scale
-                val h = sprite.height * spring.scale
+                val w = sprite.width * scale
+                val h = sprite.height * scale
                 drawImage(
                     image = sprite,
                     dstOffset = IntOffset((center.x - w / 2f).roundToInt(), (center.y - h / 2f).roundToInt()),
@@ -300,6 +323,32 @@ object GameRenderer {
             dstSize = IntSize(ghost.width, ghost.height),
             alpha = 0.4f,
         )
+    }
+
+    /** The comet (彗星) bonus actor: a bright white-gold head (two concentric circles) trailing a
+     * fading tail opposite its direction of travel, plus a purely cosmetic vertical bob layered on
+     * top of core's straight-line motion. */
+    private fun DrawScope.drawComet(comet: Comet, layout: FieldLayout, ceilingY: Float, ticks: Long) {
+        val bob = COMET_BOB_AMPLITUDE * sin(ticks * COMET_BOB_FREQ)
+        val center = layout.toPx(comet.pos.x, comet.pos.y + bob, ceilingY)
+        val dir = comet.vel.normalized()
+        val tailDx = -dir.x
+        val tailDy = -dir.y
+        val headRadius = layout.scale * 0.45f
+
+        for (i in COMET_TAIL_SEGMENTS downTo 1) {
+            val t = i / COMET_TAIL_SEGMENTS.toFloat()
+            val dist = layout.scale * COMET_TAIL_REACH * t
+            val segCenter = Offset(center.x + tailDx * dist, center.y + tailDy * dist)
+            drawCircle(
+                color = Neon.gold.copy(alpha = (1f - t) * 0.7f),
+                radius = headRadius * (1f - t * 0.6f),
+                center = segCenter,
+            )
+        }
+
+        drawCircle(color = Neon.gold.copy(alpha = 0.5f), radius = headRadius * 1.6f, center = center)
+        drawCircle(color = Color.White, radius = headRadius, center = center)
     }
 
     private fun DrawScope.drawProjectile(projectile: Projectile, sprites: BubbleSprites, layout: FieldLayout, ceilingY: Float) {

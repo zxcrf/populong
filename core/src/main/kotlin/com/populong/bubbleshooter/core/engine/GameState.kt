@@ -12,6 +12,15 @@ import com.populong.bubbleshooter.core.physics.Projectile
 enum class Phase { AIMING, FLYING, WON, LOST }
 
 /**
+ * A cosmic-egg bonus actor (彗星): drifts in a straight horizontal line across the empty band below
+ * the grid and above the shooter, Endless mode only (see [GameEngine]). A projectile that flies
+ * within [GameEvent.CometHit] range of it collects the bonus without being deflected — the comet is
+ * a pickup, not a collision. Core keeps its motion a straight line; the render layer adds a purely
+ * cosmetic sinusoidal bob on top.
+ */
+data class Comet(val pos: Vec2, val vel: Vec2)
+
+/**
  * A complete, immutable snapshot of a game. Two states produced from the same seed and the same
  * input sequence are always structurally equal — the engine is a pure function of state and input.
  *
@@ -19,6 +28,8 @@ enum class Phase { AIMING, FLYING, WON, LOST }
  * @property descentSteps level-mode compression steps applied; each counts as half a row toward the lose line.
  * @property rngState snapshot of the [com.populong.bubbleshooter.core.level.Rng] stream.
  * @property ticks total steps advanced.
+ * @property comet the currently-aloft comet bonus actor, or null if none is in flight (Endless only).
+ * @property cometHits total comets collected so far this run; odd hits queue a Rainbow, even hits a Bomb.
  */
 data class GameState(
     val mode: GameMode,
@@ -39,6 +50,8 @@ data class GameState(
     val descentSteps: Int,
     val rngState: Long,
     val ticks: Long,
+    val comet: Comet? = null,
+    val cometHits: Int = 0,
 ) {
 
     /** True while fever scoring is in effect. */

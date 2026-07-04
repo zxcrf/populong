@@ -25,6 +25,7 @@ private val MINT_ARGB = Neon.mint.toArgb()
 private val ORANGE_ARGB = Neon.bubbleColor(BubbleColor.ORANGE).toArgb()
 private val GREY_ARGB = Color(0xFF9AA0B0).toArgb()
 private val GREY_DIM_ARGB = Color(0xFF5A5F6E).toArgb()
+private val VIOLET_ARGB = Color(0xFFB44DFF).toArgb()
 private val CONFETTI_PALETTE: IntArray = (BubbleColor.all.map { Neon.bubbleColor(it).toArgb() } +
     listOf(GOLD_ARGB, CYAN_ARGB, MAGENTA_ARGB, WHITE_ARGB)).toIntArray()
 
@@ -302,6 +303,8 @@ class EffectsController(private val rng: java.util.Random = java.util.Random(7))
                 is GameEvent.SupernovaChained -> onSupernovaChained(event, preGrid)
                 is GameEvent.Landed -> onLanded(event, postGrid)
                 is GameEvent.PulsarToggled -> onPulsarToggled(event)
+                is GameEvent.FogRevealed -> onFogRevealed(event)
+                is GameEvent.CometHit -> onCometHit(event)
                 GameEvent.Fired -> onFired()
                 GameEvent.RowInserted -> onGridDrop()
                 GameEvent.CeilingStepped -> onGridDrop()
@@ -414,6 +417,36 @@ class EffectsController(private val rng: java.util.Random = java.util.Random(7))
                 particles.spawn(px, py, cos(angle) * speed, sin(angle) * speed, randF(0.3f, 0.5f), randF(0.04f, 0.08f), GREY_ARGB)
             }
         }
+    }
+
+    /** A fog cell dissolved into the open: 10 slow, low-gravity violet/white wisp particles per
+     * cell, fading over 0.6s — the shared [particles] pool applies one gravity to everyone, so the
+     * "low gravity, slow drift" read comes from a small upward velocity bias plus a low top speed,
+     * the same trick [onPopped] uses for its own slight upward drift. */
+    private fun onFogRevealed(event: GameEvent.FogRevealed) {
+        for (pos in event.cells) {
+            val (px, py) = cellCenter(pos)
+            repeat(10) {
+                val color = if (rng.nextBoolean()) WHITE_ARGB else VIOLET_ARGB
+                val angle = randF(0f, TWO_PI)
+                val speed = randF(0.15f, 0.5f)
+                particles.spawn(px, py, cos(angle) * speed, sin(angle) * speed - 0.3f, 0.6f, randF(0.05f, 0.1f), color)
+            }
+        }
+    }
+
+    /** A projectile collected a comet in flight: a 30-spark gold/white burst at the pickup point
+     * plus a "彗星!+道具" popup — the ammo-upgrade itself is a state fact the HUD already reflects. */
+    private fun onCometHit(event: GameEvent.CometHit) {
+        val px = event.at.x
+        val py = event.at.y
+        repeat(30) {
+            val color = if (rng.nextBoolean()) GOLD_ARGB else WHITE_ARGB
+            val angle = randF(0f, TWO_PI)
+            val speed = randF(1.0f, 2.6f)
+            particles.spawn(px, py, cos(angle) * speed, sin(angle) * speed, randF(0.5f, 0.9f), randF(0.06f, 0.14f), color)
+        }
+        popups.add(ScorePopup(px, py, age = 0f, lifeSec = POPUP_LIFE_BANK, text = "彗星！+道具", colorArgb = GOLD_ARGB))
     }
 
     private fun onFeverStarted(grid: BubbleGrid) {

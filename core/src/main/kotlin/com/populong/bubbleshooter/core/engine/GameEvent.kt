@@ -80,4 +80,14 @@ sealed interface GameEvent {
 
     /** The game was lost at [finalScore]. */
     data class Lost(val finalScore: Long) : GameEvent
+
+    /** A comet (彗星) bonus actor appeared at [pos] (Endless only). Presentation-only cue. */
+    data class CometSpawned(val pos: Vec2) : GameEvent
+
+    /**
+     * An in-flight projectile collected the comet at [at]; the comet is a bonus pickup, not a
+     * collision, so the projectile keeps flying. The engine already upgraded [GameState.nextAmmo]
+     * to Rainbow (odd-numbered hits) or Bomb (even-numbered).
+     */
+    data class CometHit(val at: Vec2) : GameEvent
 }

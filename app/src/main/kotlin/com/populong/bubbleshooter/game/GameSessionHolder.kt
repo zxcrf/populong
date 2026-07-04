@@ -230,6 +230,12 @@ class GameSessionHolder(
                 GameEvent.Swapped -> sfx.play(Sfx.SWAP)
                 GameEvent.RowInserted -> Unit
                 GameEvent.CeilingStepped -> Unit
+                is GameEvent.CometSpawned -> Unit // visual only; EffectsController/GameRenderer draw it
+                is GameEvent.CometHit -> {
+                    sfx.play(Sfx.BANK)
+                    haptics.click()
+                }
+
                 is GameEvent.Won -> {
                     finalStars = event.stars
                     sfx.play(Sfx.WIN)

@@ -5,6 +5,7 @@ import com.populong.bubbleshooter.core.grid.BubbleColor
 import com.populong.bubbleshooter.core.grid.BubbleGrid
 import com.populong.bubbleshooter.core.grid.GridGeometry
 import com.populong.bubbleshooter.core.grid.GridPos
+import com.populong.bubbleshooter.core.grid.Vec2
 import com.populong.bubbleshooter.core.grid.matchableColor
 import com.populong.bubbleshooter.core.level.LevelSpec
 import com.populong.bubbleshooter.core.level.Rng
@@ -143,6 +144,12 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
         // does work on the ticks where a pulsar actually crosses its phase boundary.
         s = togglePulsars(s, events)
 
+        // The comet drifts every tick regardless of AIMING/FLYING (like pulsars), but freezes once
+        // the run is over — nothing to chase after WON/LOST.
+        if (s.phase != Phase.WON && s.phase != Phase.LOST) {
+            s = advanceComet(s)
+        }
+
         if (s.phase != Phase.FLYING) return StepResult(s, events)
 
         val projectile = s.projectile!!
@@ -154,11 +161,46 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             is SimOutcome.Moving -> {
                 val moved = outcome.projectile
                 if (moved.bounces > projectile.bounces) events.add(GameEvent.Bounced(moved.pos))
-                StepResult(s.copy(projectile = moved), events)
+                // The comet is a bonus pickup, not a collision: a hit upgrades the queued ammo and
+                // clears the comet, but the projectile itself keeps flying untouched.
+                val hitState = checkCometHit(s.copy(projectile = moved), events)
+                StepResult(hitState, events)
             }
 
             is SimOutcome.Landed -> resolve(s, outcome, events)
         }
+    }
+
+    /** Advances [state]'s comet (if any) by one tick in a straight line — deliberately independent
+     * of [CollisionModel]/[ProjectileSim]: it never bounces, bends near gravity wells or teleports
+     * through wormholes, it just drifts off-screen. Despawns once fully clear of the field. */
+    private fun advanceComet(state: GameState): GameState {
+        val comet = state.comet ?: return state
+        val moved = comet.copy(pos = comet.pos + comet.vel * config.TICK)
+        val fieldWidth = 2f * state.grid.evenCols
+        return if (moved.pos.x < -2f || moved.pos.x > fieldWidth + 2f) {
+            state.copy(comet = null)
+        } else {
+            state.copy(comet = moved)
+        }
+    }
+
+    /**
+     * If [state]'s in-flight projectile has drifted within [COMET_HIT_DIST] of its comet, collects
+     * it: emits [GameEvent.CometHit], clears the comet, bumps [GameState.cometHits] and upgrades
+     * [GameState.nextAmmo] to [Ammo.Rainbow] (odd-numbered hits) or [Ammo.Bomb] (even-numbered).
+     */
+    private fun checkCometHit(state: GameState, events: MutableList<GameEvent>): GameState {
+        val comet = state.comet ?: return state
+        val projectile = state.projectile ?: return state
+        val dx = projectile.pos.x - comet.pos.x
+        val dy = projectile.pos.y - comet.pos.y
+        if (dx * dx + dy * dy >= COMET_HIT_DIST * COMET_HIT_DIST) return state
+
+        events.add(GameEvent.CometHit(comet.pos))
+        val hits = state.cometHits + 1
+        val upgrade = if (hits % 2 == 1) Ammo.Rainbow else Ammo.Bomb
+        return state.copy(comet = null, cometHits = hits, nextAmmo = upgrade)
     }
 
     // --- Resolution ---------------------------------------------------------------------------
@@ -298,6 +340,18 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             }
         }
 
+        // Comet spawn: an Endless-only cosmic-egg bonus, rolled once per resolution — ~1/8 chance
+        // once the run is warmed up (shotsFired >= COMET_MIN_SHOTS) and no comet is already aloft.
+        // Consumes the rng stream only in Endless resolutions, so Level/Daily golden hashes (which
+        // never take this branch) are untouched.
+        var comet = state.comet
+        if (state.mode is GameMode.Endless && comet == null && state.shotsFired >= COMET_MIN_SHOTS) {
+            if (rng.nextInt(COMET_SPAWN_CHANCE) == 0) {
+                comet = spawnComet(grid, rng)
+                events.add(GameEvent.CometSpawned(comet.pos))
+            }
+        }
+
         // Win / lose. Stones, gravity wells and wormholes are permanent field furniture — like
         // stones, wells and (indestructible) wormholes never have to be cleared to win.
         val isLevelMode = state.mode is GameMode.Level || state.mode is GameMode.Daily
@@ -313,7 +367,7 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
                 state.copy(
                     grid = grid, phase = Phase.WON, projectile = null,
                     score = finalScore, combo = combo, feverMeter = feverMeter, feverTicksLeft = feverTicks,
-                    descentSteps = descentSteps, rngState = rng.state,
+                    descentSteps = descentSteps, rngState = rng.state, comet = comet, cometHits = state.cometHits,
                 ),
                 events,
             )
@@ -328,13 +382,15 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
                 state.copy(
                     grid = grid, phase = Phase.LOST, projectile = null,
                     score = score, combo = combo, feverMeter = feverMeter, feverTicksLeft = feverTicks,
-                    descentSteps = descentSteps, rngState = rng.state,
+                    descentSteps = descentSteps, rngState = rng.state, comet = comet, cometHits = state.cometHits,
                 ),
                 events,
             )
         }
 
         // Advance the ammo queue; the new next never uses a color absent from the resolved grid.
+        // Note: if a comet was collected mid-flight, state.nextAmmo already holds the Rainbow/Bomb
+        // upgrade (see checkCometHit) — newCurrent picks that up so it becomes the very next shot.
         val newCurrent = state.nextAmmo
         val newNext = drawAmmo(state.mode, grid, ordinal = state.shotsFired + 2, rng)
         return StepResult(
@@ -342,7 +398,7 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
                 grid = grid, phase = Phase.AIMING, projectile = null,
                 currentAmmo = newCurrent, nextAmmo = newNext,
                 score = score, combo = combo, feverMeter = feverMeter, feverTicksLeft = feverTicks,
-                descentSteps = descentSteps, rngState = rng.state,
+                descentSteps = descentSteps, rngState = rng.state, comet = comet, cometHits = state.cometHits,
             ),
             events,
         )
@@ -382,6 +438,24 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
             return 1
         }
         return 0
+    }
+
+    /**
+     * Spawns a comet at a side edge of [grid], in the empty band below the bottom row and above
+     * the shooter, drifting horizontally toward the opposite edge. The band and speed are picked
+     * deterministically from [rng] so a fixed seed always reproduces the same spawn.
+     */
+    private fun spawnComet(grid: BubbleGrid, rng: Rng): Comet {
+        val fieldWidth = 2f * grid.evenCols
+        val ceilingY = GridGeometry.centerY(grid.ceilingRow) - 1f
+        val bandTop = ceilingY + (config.maxRows - 2) * GridGeometry.ROW_HEIGHT
+        val y = bandTop + rng.nextFloat() * GridGeometry.ROW_HEIGHT
+        val speed = COMET_SPEED_MIN + rng.nextFloat() * (COMET_SPEED_MAX - COMET_SPEED_MIN)
+        return if (rng.nextInt(2) == 0) {
+            Comet(pos = Vec2(-1f, y), vel = Vec2(speed, 0f))
+        } else {
+            Comet(pos = Vec2(fieldWidth + 1f, y), vel = Vec2(-speed, 0f))
+        }
     }
 
     private fun insertEndlessRow(mode: GameMode.Endless, grid: BubbleGrid, rng: Rng): BubbleGrid {
@@ -536,5 +610,18 @@ class GameEngine(private val config: GameConfig = GameConfig()) {
     private companion object {
         /** Pulsar blink cadence in ticks: each pulsar flips its lit state every this many ticks. */
         const val PULSAR_PERIOD = 240
+
+        /** A comet never spawns before this many Endless shots have been fired. */
+        const val COMET_MIN_SHOTS = 6
+
+        /** Roughly a 1-in-8 chance per eligible resolution that a comet spawns. */
+        const val COMET_SPAWN_CHANCE = 8
+
+        /** Comet horizontal drift speed range, in units/s. */
+        const val COMET_SPEED_MIN = 10f
+        const val COMET_SPEED_MAX = 14f
+
+        /** A flying projectile within this distance of the comet's center collects it. */
+        const val COMET_HIT_DIST = 1.5f
     }
 }

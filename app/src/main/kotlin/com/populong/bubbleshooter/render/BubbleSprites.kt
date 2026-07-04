@@ -49,22 +49,32 @@ class BubbleSprites(private val radiusPx: Float) {
     private val gravityWellSprite: ImageBitmap = gravityWellSpriteImpl()
     private val wormholeSprite1: ImageBitmap = wormholeSpriteImpl(warm = false)
     private val wormholeSprite2: ImageBitmap = wormholeSpriteImpl(warm = true)
-    private val fogUnrevealedSprite: ImageBitmap = fogUnrevealedSpriteImpl()
+    private val fogCloudA: ImageBitmap = fogCloudSpriteImpl(variant = 0)
+    private val fogCloudB: ImageBitmap = fogCloudSpriteImpl(variant = 1)
     private val bombSprite: ImageBitmap = bombSpriteImpl()
     private val rainbowSprite: ImageBitmap = rainbowSpriteImpl()
 
-    /** The baked sprite for a placed grid bubble [b]. */
+    /** The baked sprite for a placed grid bubble [b]. An unrevealed [Bubble.Fog] here always bakes
+     * as variant 0 ([fogCloudA]) — callers with cell context (the grid draw loop) that want the
+     * two arrangements to alternate per-cell should call [fogCloud] directly instead. */
     fun forBubble(b: Bubble): ImageBitmap = when (b) {
         is Bubble.Colored -> colored.getValue(b.color)
         Bubble.Stone -> stoneSprite
         is Bubble.Ice -> if (b.hitsLeft <= 1) iceCracked.getValue(b.color) else ice.getValue(b.color)
-        is Bubble.Fog -> if (b.revealed) fogRevealed.getValue(b.color) else fogUnrevealedSprite
+        is Bubble.Fog -> if (b.revealed) fogRevealed.getValue(b.color) else fogCloudA
         is Bubble.Chained -> chained.getValue(b.color)
         is Bubble.Supernova -> supernova.getValue(b.color)
         is Bubble.Pulsar -> if (b.lit) pulsarLit.getValue(b.color) else pulsarUnlit.getValue(b.color)
         Bubble.GravityWell -> gravityWellSprite
         is Bubble.Wormhole -> if (b.pairId >= 2) wormholeSprite2 else wormholeSprite1
     }
+
+    /**
+     * The nebula-cloud sprite for an unrevealed [Bubble.Fog] cell: [variant] (any int; only its
+     * parity matters) picks one of two baked blob arrangements, so [GameRenderer] can alternate
+     * them per-cell (by `pos.packed and 1`) and keep neighboring fog cells from tiling identically.
+     */
+    fun fogCloud(variant: Int): ImageBitmap = if (variant and 1 == 0) fogCloudA else fogCloudB
 
     /** The baked sprite for a loaded/in-flight ammo [a]. */
     fun forAmmo(a: Ammo): ImageBitmap = when (a) {
@@ -183,34 +193,48 @@ class BubbleSprites(private val radiusPx: Float) {
         }
     }
 
-    private fun fogUnrevealedSpriteImpl(): ImageBitmap = bake {
+    /**
+     * A nebula cloud (星云迷雾): three layered translucent blobs (violet, deep blue, white haze) at
+     * slight offsets over a dark backdrop, plus a few faint speck dots glimpsed through the cloud —
+     * no question mark. [variant] arranges the blobs/specks differently so [fogCloud]'s two baked
+     * bitmaps read as distinct when tiled across neighboring unrevealed-fog cells.
+     */
+    private fun fogCloudSpriteImpl(variant: Int): ImageBitmap = bake {
         val c = Offset(size.width / 2f, size.height / 2f)
-        val base = Color(0xFF2A2440)
-        val qColor = Color(0xFFCFC6FF)
-        drawCircle(color = base, radius = radiusPx, center = c)
+        drawCircle(color = Color(0xFF191530), radius = radiusPx, center = c)
+
+        val violet = Color(0x66B44DFF)
+        val deepBlue = Color(0x554D9FFF)
+        val whiteHaze = Color(0x22FFFFFF)
+        val blobSize = Size(radiusPx * 1.15f, radiusPx * 0.85f)
+        val blobs = if (variant == 0) {
+            listOf(Offset(-0.32f, -0.22f) to violet, Offset(0.28f, 0.18f) to deepBlue, Offset(-0.08f, 0.32f) to whiteHaze)
+        } else {
+            listOf(Offset(0.30f, -0.28f) to deepBlue, Offset(-0.30f, 0.12f) to violet, Offset(0.10f, 0.34f) to whiteHaze)
+        }
+        for ((offset, color) in blobs) {
+            drawOval(
+                color = color,
+                topLeft = c + Offset(offset.x * radiusPx - blobSize.width / 2f, offset.y * radiusPx - blobSize.height / 2f),
+                size = blobSize,
+            )
+        }
+
+        val specks = if (variant == 0) {
+            listOf(Offset(-0.42f, 0.04f), Offset(0.36f, -0.32f), Offset(0.02f, 0.42f))
+        } else {
+            listOf(Offset(0.40f, 0.08f), Offset(-0.22f, -0.36f), Offset(-0.06f, 0.40f))
+        }
+        for (o in specks) {
+            drawCircle(color = Color.White.copy(alpha = 0.5f), radius = radiusPx * 0.05f, center = c + Offset(o.x * radiusPx, o.y * radiusPx))
+        }
+
         drawCircle(
-            color = Color(0xFF6A5AA0).copy(alpha = 0.4f),
+            color = Color(0xFF6A5AA0).copy(alpha = 0.35f),
             radius = radiusPx,
             center = c,
-            style = Stroke(width = max(1f, radiusPx * 0.08f)),
+            style = Stroke(width = max(1f, radiusPx * 0.07f)),
         )
-        drawArc(
-            color = qColor,
-            startAngle = -150f,
-            sweepAngle = 200f,
-            useCenter = false,
-            topLeft = c + Offset(-radiusPx * 0.35f, -radiusPx * 0.5f),
-            size = Size(radiusPx * 0.7f, radiusPx * 0.6f),
-            style = Stroke(width = max(1f, radiusPx * 0.13f), cap = StrokeCap.Round),
-        )
-        drawLine(
-            color = qColor,
-            start = c + Offset(0f, radiusPx * 0.05f),
-            end = c + Offset(0f, radiusPx * 0.28f),
-            strokeWidth = max(1f, radiusPx * 0.13f),
-            cap = StrokeCap.Round,
-        )
-        drawCircle(color = qColor, radius = radiusPx * 0.09f, center = c + Offset(0f, radiusPx * 0.5f))
     }
 
     private fun fogRevealedSprite(base: Color): ImageBitmap = bake {
