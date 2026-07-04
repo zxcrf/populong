@@ -32,10 +32,10 @@ private const val POPUP_LIFE = 1.0f
 private const val POPUP_LIFE_BANK = 1.4f
 
 /** Ring-buffer capacity for [EffectsController]'s pop-splat decals. */
-private const val DECAL_CAPACITY = 24
+@PublishedApi internal const val DECAL_CAPACITY = 24
 
 /** Lifetime, in seconds, of a single pop-splat decal. */
-private const val DECAL_LIFE = 0.5f
+@PublishedApi internal const val DECAL_LIFE = 0.5f
 
 /** Damped-spring constants for the per-cell "impact jelly" registry (see [BubbleSpring]):
  * position offsets (landing-neighbor push) spring back faster/stiffer than the landed cell's own
