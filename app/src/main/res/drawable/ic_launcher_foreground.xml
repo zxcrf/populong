@@ -4,19 +4,18 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:translateX="22"
-        android:translateY="22">
-        <path
-            android:fillColor="#FF4488FF"
-            android:pathData="M32,0A32,32,0,1,1,32,64A32,32,0,1,1,32,0Z" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M32,8A24,24,0,1,1,32,56A24,24,0,1,1,32,8Z"
-            android:fillAlpha="0.3" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M24,18A8,8,0,1,1,24,34A8,8,0,1,1,24,18Z"
-            android:fillAlpha="0.6" />
-    </group>
+    <!-- Glassy neon bubble on deep space: main sphere -->
+    <path
+        android:fillColor="#2FD4F0"
+        android:pathData="M54,54m-26,0a26,26 0,1 1,52 0a26,26 0,1 1,-52 0" />
+    <path
+        android:fillColor="#66FFFFFF"
+        android:pathData="M44,40m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <!-- Small companion bubbles -->
+    <path
+        android:fillColor="#B04CF2"
+        android:pathData="M78,34m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <path
+        android:fillColor="#FF5C8A"
+        android:pathData="M32,76m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
 </vector>
