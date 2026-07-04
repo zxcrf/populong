@@ -10,10 +10,13 @@ import com.populong.bubbleshooter.AppContainer
 import com.populong.bubbleshooter.core.level.LevelCatalog
 import com.populong.bubbleshooter.core.mode.GameMode
 import com.populong.bubbleshooter.game.GameScreen
+import com.populong.bubbleshooter.ui.menu.AchievementsScreen
 import com.populong.bubbleshooter.ui.menu.DailyScreen
 import com.populong.bubbleshooter.ui.menu.EndlessSetupScreen
 import com.populong.bubbleshooter.ui.menu.GalaxyMapScreen
 import com.populong.bubbleshooter.ui.menu.MainMenuScreen
+import com.populong.bubbleshooter.ui.menu.SettingsScreen
+import com.populong.bubbleshooter.ui.menu.StatsScreen
 
 /** Top-level navigation state: which screen is currently shown. */
 sealed interface Screen {
@@ -28,6 +31,15 @@ sealed interface Screen {
 
     /** Endless-mode mutator picker, reached from Menu's「无尽模式」row. */
     data object EndlessSetup : Screen
+
+    /** The audio/haptics + about screen, reached from Menu's「⚙ 设置」button. */
+    data object Settings : Screen
+
+    /** The achievement list, reached from Menu's「🏆 成就」button. */
+    data object Achievements : Screen
+
+    /** The career-stats screen, reached from Menu's「📊 统计」button. */
+    data object Stats : Screen
 
     /** An active game run in [mode]; [origin] is the screen to return to on exit. */
     data class Game(val mode: GameMode, val origin: Screen) : Screen
@@ -49,6 +61,24 @@ fun App(container: AppContainer) {
                 onPlayLevel = { screen = Screen.GalaxyMap },
                 onPlayEndless = { screen = Screen.EndlessSetup },
                 onPlayDaily = { screen = Screen.DailySetup },
+                onOpenSettings = { screen = Screen.Settings },
+                onOpenAchievements = { screen = Screen.Achievements },
+                onOpenStats = { screen = Screen.Stats },
+            )
+
+            is Screen.Settings -> SettingsScreen(
+                container = container,
+                onBack = { screen = Screen.Menu },
+            )
+
+            is Screen.Achievements -> AchievementsScreen(
+                container = container,
+                onBack = { screen = Screen.Menu },
+            )
+
+            is Screen.Stats -> StatsScreen(
+                container = container,
+                onBack = { screen = Screen.Menu },
             )
 
             is Screen.GalaxyMap -> GalaxyMapScreen(

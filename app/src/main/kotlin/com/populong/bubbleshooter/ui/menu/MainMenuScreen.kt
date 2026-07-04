@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,7 +50,9 @@ private const val TWO_PI = 6.2831855f
  * The deep-space main menu: glowing title, a twinkling starfield, and mode-select panels.
  * 「关卡模式」opens the galaxy map, 「无尽模式」opens its mutator setup, and 「每日挑战」opens
  * the daily-challenge screen; each mode's [AppContainer.save] state (stars, streak) is reflected
- * directly on this screen.
+ * directly on this screen. 「⚙ 设置」opens the audio/haptics + about screen via [onOpenSettings],
+ * 「🏆 成就」opens the achievement list via [onOpenAchievements], and 「📊 统计」opens the
+ * career-stats screen via [onOpenStats].
  */
 @Composable
 fun MainMenuScreen(
@@ -57,6 +60,9 @@ fun MainMenuScreen(
     onPlayLevel: () -> Unit,
     onPlayEndless: () -> Unit,
     onPlayDaily: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenAchievements: () -> Unit,
+    onOpenStats: () -> Unit,
 ) {
     val save by container.save.save.collectAsState()
     val totalStars = remember(save) { save.levels.values.sumOf { it.stars } }
@@ -187,6 +193,29 @@ fun MainMenuScreen(
                     text = "连续 ${save.daily.streak} 天",
                     color = Neon.gold,
                     fontSize = 13.sp,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text(
+                    text = "⚙ 设置",
+                    color = Neon.textDim,
+                    fontSize = 15.sp,
+                    modifier = Modifier.clickable { playAndGo(onOpenSettings) },
+                )
+                Text(
+                    text = "🏆 成就",
+                    color = Neon.textDim,
+                    fontSize = 15.sp,
+                    modifier = Modifier.clickable { playAndGo(onOpenAchievements) },
+                )
+                Text(
+                    text = "📊 统计",
+                    color = Neon.textDim,
+                    fontSize = 15.sp,
+                    modifier = Modifier.clickable { playAndGo(onOpenStats) },
                 )
             }
         }
